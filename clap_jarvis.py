@@ -125,6 +125,66 @@ def load_phrases():
     return DEFAULT_PHRASES.copy()
 
 
+AIRPORT_NAMES = {
+    "VIDP": "Delhi", "DEL": "Delhi",
+    "VABB": "Mumbai", "BOM": "Mumbai",
+    "VOBL": "Bengaluru", "BLR": "Bengaluru",
+    "VOMM": "Chennai", "MAA": "Chennai",
+    "VECC": "Kolkata", "CCU": "Kolkata",
+    "VHYD": "Hyderabad", "HYD": "Hyderabad",
+    "EGLL": "London Heathrow", "LHR": "London Heathrow",
+    "KJFK": "New York JFK", "JFK": "New York JFK",
+    "OMDB": "Dubai", "DXB": "Dubai",
+    "WSSS": "Singapore", "SIN": "Singapore",
+    "VAAH": "Ahmedabad", "AMD": "Ahmedabad",
+    "VAGO": "Goa", "GOI": "Goa",
+    "VABP": "Bhopal", "BHO": "Bhopal"
+}
+
+
+def get_flight_route(callsign):
+    """Retrieves origin and destination airport codes for a callsign from route APIs."""
+    if not callsign or callsign == "Unknown":
+        return None, None
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    # 1. Try HexDB Route API
+    try:
+        url = f"https://hexdb.io/api/v1/route/icao/{callsign}"
+        resp = requests.get(url, headers=headers, timeout=2.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            route_str = data.get("route")
+            if route_str and "-" in route_str:
+                origin, dest = route_str.split("-", 1)
+                return origin.strip(), dest.strip()
+    except Exception:
+        pass
+
+    # 2. Try OpenSky Routes API fallback
+    try:
+        url = f"https://opensky-network.org/api/routes?callsign={callsign}"
+        resp = requests.get(url, headers=headers, timeout=2.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            route_arr = data.get("route")
+            if route_arr and len(route_arr) >= 2:
+                return route_arr[0].strip(), route_arr[1].strip()
+    except Exception:
+        pass
+
+    return None, None
+
+
+def format_airport_name(code):
+    """Converts ICAO/IATA airport code to a human-readable city/airport name."""
+    if not code:
+        return None
+    code_upper = code.upper()
+    return AIRPORT_NAMES.get(code_upper, code_upper)
+
+
 def check_overhead_flight(config):
     """
     Checks OpenSky Network API for flights overhead within bounding box.
@@ -178,12 +238,22 @@ def check_overhead_flight(config):
                     else:
                         altitude_str = "unknown altitude"
 
-                    spoken_text = f"Sir, flight {callsign} is currently overhead at {altitude_str}."
-                    logger.info(f"Overhead flight detected: Callsign={callsign}, Altitude={altitude_str}")
+                    origin_code, dest_code = get_flight_route(callsign)
+                    origin_name = format_airport_name(origin_code)
+                    dest_name = format_airport_name(dest_code)
+
+                    if origin_name and dest_name:
+                        spoken_text = f"Sir, flight {callsign} flying from {origin_name} to {dest_name} is currently overhead at {altitude_str}."
+                    else:
+                        spoken_text = f"Sir, flight {callsign} is currently overhead at {altitude_str}."
+
+                    logger.info(f"Overhead flight detected: Callsign={callsign}, Route={origin_name}->{dest_name}, Altitude={altitude_str}")
                     
                     return {
                         "spoken_text": spoken_text,
                         "callsign": callsign if callsign != "Unknown" else None,
+                        "origin": origin_name,
+                        "destination": dest_name,
                         "lat": flight[6],
                         "lon": flight[5]
                     }

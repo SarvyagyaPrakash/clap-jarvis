@@ -13,7 +13,7 @@ Just clap your hands **3 times** or snap your fingers **3 times** in quick succe
 
 ### 2. What Happens Next
 1. JARVIS greets you in a realistic British voice (e.g., *"Hello sir, welcome back. Tame Impala or ACDC today?"*).
-2. If an airplane is flying within 100 km of your location, JARVIS announces it (e.g., *"Sir, flight AKJ693J is currently overhead at 37,000 feet."*) and opens FlightRadar24 directly focusing on that exact plane.
+2. If an airplane is flying within 100 km of your location, JARVIS announces it with origin and destination details (e.g., *"Sir, flight AIC101 flying from Delhi to New York JFK is currently overhead at 35,000 feet."*) and opens FlightRadar24 directly focusing on that exact plane.
 
 ---
 
