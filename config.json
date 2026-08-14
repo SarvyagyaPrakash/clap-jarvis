@@ -11,5 +11,5 @@
   "enable_jarvis_wake_word": false,
   "latitude": 23.2875,
   "longitude": 77.3378,
-  "radius_km": 100.0
+  "radius_km": 50.0
 }
