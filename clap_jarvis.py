@@ -142,8 +142,30 @@ AIRPORT_NAMES = {
     "WSSS": "Singapore", "SIN": "Singapore",
     "VAAH": "Ahmedabad", "AMD": "Ahmedabad",
     "VAGO": "Goa", "GOI": "Goa",
-    "VABP": "Bhopal", "BHO": "Bhopal"
+    "VABP": "Bhopal", "BHO": "Bhopal",
+    "WMKK": "Kuala Lumpur", "KUL": "Kuala Lumpur",
+    "KLAX": "Los Angeles", "LAX": "Los Angeles",
+    "OTHH": "Doha", "DOH": "Doha",
+    "EDDF": "Frankfurt", "FRA": "Frankfurt",
+    "LFPG": "Paris CDG", "CDG": "Paris CDG",
+    "VTBS": "Bangkok", "BKK": "Bangkok",
+    "VOCI": "Cochin", "COK": "Cochin",
+    "VAPO": "Pune", "PNQ": "Pune",
+    "VIJP": "Jaipur", "JAI": "Jaipur",
+    "VAPM": "Nagpur", "NAG": "Nagpur",
+    "VICG": "Chandigarh", "IXC": "Chandigarh",
+    "VILK": "Lucknow", "LKO": "Lucknow"
 }
+
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Calculates great-circle distance between two geographic coordinates in kilometers."""
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
 
 
 def get_flight_route(callsign):
@@ -151,11 +173,12 @@ def get_flight_route(callsign):
     if not callsign or callsign == "Unknown":
         return None, None
 
+    callsign_clean = callsign.strip()
     headers = {"User-Agent": "Mozilla/5.0"}
     
     # 1. Try HexDB Route API
     try:
-        url = f"https://hexdb.io/api/v1/route/icao/{callsign}"
+        url = f"https://hexdb.io/api/v1/route/icao/{callsign_clean}"
         resp = requests.get(url, headers=headers, timeout=2.0)
         if resp.status_code == 200:
             data = resp.json()
@@ -168,7 +191,7 @@ def get_flight_route(callsign):
 
     # 2. Try OpenSky Routes API fallback
     try:
-        url = f"https://opensky-network.org/api/routes?callsign={callsign}"
+        url = f"https://opensky-network.org/api/routes?callsign={callsign_clean}"
         resp = requests.get(url, headers=headers, timeout=2.0)
         if resp.status_code == 200:
             data = resp.json()
@@ -199,7 +222,7 @@ def check_overhead_flight(config):
         lon = float(config.get("longitude", 77.3378))
         radius_km = float(config.get("radius_km", 100.0))
 
-        # Approx degree offset calculations
+        # Approx degree offset calculations for bounding box query
         lat_deg = radius_km / 111.0
         lon_deg = radius_km / (111.0 * math.cos(math.radians(lat)))
 
@@ -210,26 +233,27 @@ def check_overhead_flight(config):
 
         url = f"https://opensky-network.org/api/states/all?lamin={lamin:.4f}&lamax={lamax:.4f}&lomin={lomin:.4f}&lomax={lomax:.4f}"
         logger.info(f"Querying OpenSky Network API for coordinates ({lat}, {lon}) within {radius_km}km...")
-        response = requests.get(url, timeout=3.0)
+        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3.0)
         
         if response.status_code == 200:
             data = response.json()
             states = data.get("states")
             if states and len(states) > 0:
-                # Filter out planes on ground
+                # Filter out planes on ground and calculate exact Haversine distance in km
                 airborne_flights = []
                 for f in states:
                     on_ground = f[8] if len(f) > 8 else False
                     f_lat = f[6]
                     f_lon = f[5]
                     if not on_ground and f_lat is not None and f_lon is not None:
-                        dist_sq = (f_lat - lat)**2 + (f_lon - lon)**2
-                        airborne_flights.append((dist_sq, f))
+                        dist_km = haversine_km(lat, lon, f_lat, f_lon)
+                        if dist_km <= radius_km:
+                            airborne_flights.append((dist_km, f))
 
                 if airborne_flights:
                     # Sort by closest distance to user
                     airborne_flights.sort(key=lambda x: x[0])
-                    flight = airborne_flights[0][1]
+                    closest_dist_km, flight = airborne_flights[0]
 
                     callsign = (flight[1] or "").strip()
                     if not callsign or callsign == "":
@@ -251,7 +275,7 @@ def check_overhead_flight(config):
                     else:
                         spoken_text = f"Sir, flight {callsign} is currently overhead at {altitude_str}."
 
-                    logger.info(f"Overhead flight detected: Callsign={callsign}, Route={origin_name}->{dest_name}, Altitude={altitude_str}")
+                    logger.info(f"Overhead flight detected: Callsign={callsign}, Route={origin_name}->{dest_name}, Altitude={altitude_str}, Distance={closest_dist_km:.1f}km")
                     
                     return {
                         "spoken_text": spoken_text,
@@ -262,7 +286,7 @@ def check_overhead_flight(config):
                         "lon": flight[5]
                     }
                 else:
-                    logger.info("OpenSky query: Planes found in area, but all are on the ground.")
+                    logger.info(f"OpenSky query: Planes found in bounding box, but none within {radius_km}km airborne distance.")
             else:
                 logger.info("OpenSky query completed: No flights currently overhead.")
         else:
@@ -410,8 +434,9 @@ class ClapDaemon:
         self.speech_recognizer = sr.Recognizer()
         self.is_recognizing = False
 
-        # Non-repeating phrase memory for maximum randomness
-        self.recent_phrases = []
+        # Full-cycle shuffle deck to guarantee every phrase is spoken at least once before repeating
+        self.phrase_deck = []
+        self.last_spoken = None
 
     def check_speech_for_jarvis(self, audio_bytes):
         """Worker thread executing speech recognition for the wake word 'Jarvis'."""
@@ -501,29 +526,31 @@ class ClapDaemon:
             logger.error(f"Error inside audio callback: {e}", exc_info=True)
 
     def get_random_phrase(self):
-        """Selects a phrase randomly while preventing immediate duplicates."""
+        """
+        Selects a phrase using a full-cycle shuffle deck algorithm.
+        Guarantees that EVERY phrase in phrases.json is spoken exactly once in random order
+        before any phrase repeats.
+        """
         phrases = load_phrases()
         if not phrases:
             return "At your service, sir."
 
-        # Exclude recently spoken phrases if possible to increase randomness & variety
-        available = [p for p in phrases if p not in self.recent_phrases]
-        if not available:
-            # History exhausted: reset history except for the very last spoken phrase
-            last_spoken = self.recent_phrases[-1] if self.recent_phrases else None
-            available = [p for p in phrases if p != last_spoken]
-            self.recent_phrases.clear()
-            if not available:
-                available = phrases
+        # Keep deck synchronized with any file updates on disk
+        self.phrase_deck = [p for p in self.phrase_deck if p in phrases]
 
-        chosen = random.choice(available)
+        # If deck is exhausted, shuffle all phrases into a new cycle
+        if not self.phrase_deck:
+            new_deck = phrases.copy()
+            random.shuffle(new_deck)
 
-        # Retain history up to 50% of total phrase pool size (max 20 entries)
-        max_history = max(1, min(len(phrases) - 1, 20))
-        self.recent_phrases.append(chosen)
-        if len(self.recent_phrases) > max_history:
-            self.recent_phrases.pop(0)
+            # Prevent back-to-back duplicate across cycle boundary
+            if len(new_deck) > 1 and new_deck[0] == self.last_spoken:
+                new_deck[0], new_deck[-1] = new_deck[-1], new_deck[0]
 
+            self.phrase_deck = new_deck
+
+        chosen = self.phrase_deck.pop(0)
+        self.last_spoken = chosen
         return chosen
 
     def handle_trigger(self):
