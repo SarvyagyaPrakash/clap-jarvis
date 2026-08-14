@@ -1,0 +1,15 @@
+{
+  "threshold_peak": 0.08,
+  "threshold_snap_peak": 0.025,
+  "min_crest_factor": 2.2,
+  "threshold_rms": 0.001,
+  "required_claps": 3,
+  "window_seconds": 2.8,
+  "cooldown_seconds": 5.0,
+  "voice": "en-GB-RyanNeural",
+  "enable_flight_check": true,
+  "enable_jarvis_wake_word": false,
+  "latitude": 23.2875,
+  "longitude": 77.3378,
+  "radius_km": 100.0
+}
