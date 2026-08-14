@@ -31,12 +31,12 @@ except ImportError:
 
 # Default Fallback Configurations (optimized for sensitivity and human-like neural voice)
 DEFAULT_CONFIG = {
-    "threshold_peak": 0.08,         # Ultra-sensitive clap peak threshold
-    "threshold_snap_peak": 0.025,   # Ultra-sensitive snap peak threshold (captures soft/quiet snaps)
-    "min_crest_factor": 2.2,        # Peak-to-RMS ratio for transient detection
-    "threshold_rms": 0.001,         # Low noise floor threshold
+    "threshold_peak": 0.22,         # Clap peak threshold (prevents voice false-positives)
+    "threshold_snap_peak": 0.12,   # Snap peak threshold
+    "min_crest_factor": 4.0,        # High peak-to-RMS ratio (sharp percussive transients like claps/snaps)
+    "threshold_rms": 0.006,         # RMS energy floor
     "required_claps": 3,            # Requires exactly 3 snaps or claps
-    "window_seconds": 2.8,          # 2.8s window for 3 snaps/claps
+    "window_seconds": 4.5,          # Flexible window for fast or slow claps/snaps
     "cooldown_seconds": 5.0,        # Pause after trigger to prevent self-triggering from TTS
     "voice": "en-GB-RyanNeural",    # Ultra-realistic British Male Neural Voice (JARVIS)
     "enable_flight_check": True,
@@ -329,7 +329,7 @@ class ClapDaemon:
         self.clap_timestamps = []
         self.cooldown_until = 0.0
         self.last_clap_time = 0.0
-        self.min_inter_clap_gap = 0.15
+        self.min_inter_clap_gap = 0.08
         
         # Audio speech buffer for "Jarvis" wake word speech recognition
         self.speech_chunks = []
