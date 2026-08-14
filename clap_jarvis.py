@@ -52,7 +52,11 @@ DEFAULT_PHRASES = [
     "Hello sir, welcome back.",
     "Terrific timing, sir — I just woke up too.",
     "Good to see you again, sir.",
-    "Standing by, sir."
+    "Standing by, sir.",
+    "At your service, sir. All defense protocols remain active.",
+    "Sensors online and operating at maximum efficiency, sir.",
+    "Always a pleasure, sir. How may I assist your genius today?",
+    "Awaiting your command, sir. House systems are operating smoothly."
 ]
 
 LOG_FILE = os.path.expanduser("~/Library/Logs/clap-jarvis.log")
@@ -406,6 +410,9 @@ class ClapDaemon:
         self.speech_recognizer = sr.Recognizer()
         self.is_recognizing = False
 
+        # Non-repeating phrase memory for maximum randomness
+        self.recent_phrases = []
+
     def check_speech_for_jarvis(self, audio_bytes):
         """Worker thread executing speech recognition for the wake word 'Jarvis'."""
         self.is_recognizing = True
@@ -493,6 +500,32 @@ class ClapDaemon:
         except Exception as e:
             logger.error(f"Error inside audio callback: {e}", exc_info=True)
 
+    def get_random_phrase(self):
+        """Selects a phrase randomly while preventing immediate duplicates."""
+        phrases = load_phrases()
+        if not phrases:
+            return "At your service, sir."
+
+        # Exclude recently spoken phrases if possible to increase randomness & variety
+        available = [p for p in phrases if p not in self.recent_phrases]
+        if not available:
+            # History exhausted: reset history except for the very last spoken phrase
+            last_spoken = self.recent_phrases[-1] if self.recent_phrases else None
+            available = [p for p in phrases if p != last_spoken]
+            self.recent_phrases.clear()
+            if not available:
+                available = phrases
+
+        chosen = random.choice(available)
+
+        # Retain history up to 50% of total phrase pool size (max 20 entries)
+        max_history = max(1, min(len(phrases) - 1, 20))
+        self.recent_phrases.append(chosen)
+        if len(self.recent_phrases) > max_history:
+            self.recent_phrases.pop(0)
+
+        return chosen
+
     def handle_trigger(self):
         """Handles response logic upon trigger (double clap, double snap, or spoken 'Jarvis')."""
         flight_info = None
@@ -508,8 +541,7 @@ class ClapDaemon:
 
         # 2. Fallback to random phrase from phrases.json if no flight found
         if not spoken_line:
-            self.phrases = load_phrases()
-            spoken_line = random.choice(self.phrases)
+            spoken_line = self.get_random_phrase()
 
         voice = self.config.get("voice", "en-GB-RyanNeural")
         speak_and_launch(spoken_line, voice, flight_data=flight_info)
