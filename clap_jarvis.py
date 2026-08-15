@@ -280,6 +280,7 @@ def check_overhead_flight(config):
                     return {
                         "spoken_text": spoken_text,
                         "callsign": callsign if callsign != "Unknown" else None,
+                        "icao24": flight[0] if len(flight) > 0 else None,
                         "origin": origin_name,
                         "destination": dest_name,
                         "lat": flight[6],
@@ -341,15 +342,20 @@ def speak_and_launch(phrase, voice, flight_data=None):
     # Launch speech in background thread
     threading.Thread(target=run_speech, daemon=True).start()
 
-    # Open browser to FlightRadar24
+    # Open browser to FlightRadar24 using exact targeting
     try:
         if flight_data and flight_data.get("callsign"):
             callsign = flight_data["callsign"]
+            # FlightRadar24 accepts /flight/<callsign> or /<callsign> directly
             url = f"https://www.flightradar24.com/flight/{callsign.lower()}"
-            logger.info(f"Tracking exact flight on FlightRadar24: {url}")
+            logger.info(f"Tracking exact flight on FlightRadar24 via callsign: {url}")
+        elif flight_data and flight_data.get("icao24"):
+            icao24 = flight_data["icao24"]
+            url = f"https://www.flightradar24.com/data/aircraft/{icao24.lower()}"
+            logger.info(f"Tracking exact aircraft on FlightRadar24 via ICAO24 hex: {url}")
         elif flight_data and flight_data.get("lat") and flight_data.get("lon"):
             lat, lon = flight_data["lat"], flight_data["lon"]
-            url = f"https://www.flightradar24.com/{lat:.2f},{lon:.2f}/9"
+            url = f"https://www.flightradar24.com/{lat:.2f},{lon:.2f}/11"
             logger.info(f"Opening FlightRadar24 map centered at tracked coordinates: {url}")
         else:
             url = "https://www.flightradar24.com"
