@@ -15,6 +15,17 @@ Just clap your hands **3 times** or snap your fingers **3 times** in quick succe
 1. JARVIS greets you in a realistic British voice (e.g., *"Hello sir, welcome back. Tame Impala or ACDC today?"*).
 2. If an airplane is flying within 100 km of your location, JARVIS announces it with origin and destination details (e.g., *"Sir, flight AIC101 flying from Delhi to New York JFK is currently overhead at 35,000 feet."*) and opens FlightRadar24 directly focusing on that exact plane.
 
+### 3. Example: What JARVIS Says
+A typical session sounds like this:
+
+> 👏👏👏 *(3 claps)*
+>
+> **JARVIS:** *"Hello sir, welcome back. Prefered choice of vibe today: Tame Impala? or ACDC?"*
+>
+> **JARVIS:** *"Sir, Flight AIC101 from Delhi to New York JFK will cross your coordinates at exactly 4 mins, at an altitude of 35,000 feet and a speed of approximately 900 kilometers per hour."*
+>
+> 🌐 *FlightRadar24 opens in your browser, focused on that exact plane.*
+
 ---
 
 ## 🎛️ How to Turn JARVIS ON & OFF

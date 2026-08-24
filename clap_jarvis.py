@@ -142,7 +142,12 @@ AIRPORT_NAMES = {
     "WSSS": "Singapore", "SIN": "Singapore",
     "VAAH": "Ahmedabad", "AMD": "Ahmedabad",
     "VAGO": "Goa", "GOI": "Goa",
+    "VOGA": "Goa Mopa", "GOX": "Goa Mopa",
     "VABP": "Bhopal", "BHO": "Bhopal",
+    "VAID": "Indore", "IDR": "Indore",
+    "VAAU": "Aurangabad", "IXU": "Aurangabad",
+    "VASD": "Shirdi", "SAG": "Shirdi",
+    "VARP": "Raipur", "RPR": "Raipur",
     "WMKK": "Kuala Lumpur", "KUL": "Kuala Lumpur",
     "KLAX": "Los Angeles", "LAX": "Los Angeles",
     "OTHH": "Doha", "DOH": "Doha",
@@ -154,7 +159,34 @@ AIRPORT_NAMES = {
     "VIJP": "Jaipur", "JAI": "Jaipur",
     "VAPM": "Nagpur", "NAG": "Nagpur",
     "VICG": "Chandigarh", "IXC": "Chandigarh",
-    "VILK": "Lucknow", "LKO": "Lucknow"
+    "VILK": "Lucknow", "LKO": "Lucknow",
+    "VEBN": "Varanasi", "VNS": "Varanasi",
+    "VEPT": "Patna", "PAT": "Patna",
+    "VEGT": "Guwahati", "GAU": "Guwahati",
+    "VEBD": "Bagdogra", "IXB": "Bagdogra",
+    "VIAR": "Amritsar", "ATQ": "Amritsar",
+    "VISR": "Srinagar", "SXR": "Srinagar",
+    "VIJU": "Jammu", "IXJ": "Jammu",
+    "VILH": "Leh", "IXL": "Leh",
+    "VABO": "Vadodara", "BDQ": "Vadodara",
+    "VASU": "Surat", "STV": "Surat",
+    "VAUD": "Udaipur", "UDR": "Udaipur",
+    "VIJO": "Jodhpur", "JDH": "Jodhpur",
+    "VERC": "Ranchi", "IXR": "Ranchi",
+    "VEBS": "Bhubaneswar", "BBI": "Bhubaneswar",
+    "VOVZ": "Visakhapatnam", "VTZ": "Visakhapatnam",
+    "VOBZ": "Vijayawada", "VGA": "Vijayawada",
+    "VOMD": "Madurai", "IXM": "Madurai",
+    "VOCB": "Coimbatore", "CJB": "Coimbatore",
+    "VOTR": "Tiruchirappalli", "TRZ": "Tiruchirappalli",
+    "VOTP": "Tirupati", "TIR": "Tirupati",
+    "VOTV": "Trivandrum", "TRV": "Trivandrum",
+    "VOCL": "Calicut", "CCJ": "Calicut",
+    "VEAY": "Ayodhya", "AYJ": "Ayodhya",
+    "VHHH": "Hong Kong", "HKG": "Hong Kong",
+    "VVNB": "Hanoi", "HAN": "Hanoi",
+    "OERK": "Riyadh", "RUH": "Riyadh",
+    "VCBI": "Colombo", "CMB": "Colombo"
 }
 
 
@@ -240,17 +272,18 @@ def format_airport_name(code):
 
 def check_overhead_flight(config):
     """
-    Checks live flight feeds (FlightRadar24 live feed primary, OpenSky fallback) for planes overhead.
+    Checks live flight feeds (FlightRadar24 live feed primary, adsb.fi & OpenSky fallbacks) for planes overhead.
     Returns dict with flight details & spoken string if found, or None.
     """
     try:
         lat = float(config.get("latitude", 23.23352))
         lon = float(config.get("longitude", 77.43257))
-        radius_km = float(config.get("radius_km", 200.0))
+        radius_km = float(config.get("radius_km", 150.0))
 
-        # Approx degree offset calculations for bounding box query
-        lat_deg = radius_km / 111.0
-        lon_deg = radius_km / (111.0 * math.cos(math.radians(lat)))
+        # 15% buffer for live bounding queries to avoid missing planes near the boundary
+        buffer_km = radius_km * 1.15
+        lat_deg = buffer_km / 111.0
+        lon_deg = buffer_km / (111.0 * math.cos(math.radians(lat)))
 
         lamin = lat - lat_deg
         lamax = lat + lat_deg
@@ -263,25 +296,29 @@ def check_overhead_flight(config):
 
         airborne_flights = []
 
-        # 1. Primary: FlightRadar24 Live Zone Feed (Fast & accurate in India)
+        # 1. Primary Provider: FlightRadar24 Live Zone Feed (Fastest in Asia/India)
         try:
             fr24_url = f"https://data-cloud.flightradar24.com/zones/fcgi/feed.js?bounds={lamax:.2f},{lamin:.2f},{lomin:.2f},{lomax:.2f}&faa=1&satellite=1&msc=1&mlat=1&flarm=1&adsb=1&gnd=1&air=1&vehicles=1&estimated=1"
             logger.info(f"Querying FlightRadar24 live feed for coordinates ({lat}, {lon}) within {radius_km}km...")
-            fr24_resp = requests.get(fr24_url, headers=headers, timeout=3.0)
+            fr24_resp = requests.get(fr24_url, headers=headers, timeout=4.0)
             if fr24_resp.status_code == 200:
                 data = fr24_resp.json()
                 for key, val in data.items():
-                    if isinstance(val, list) and len(val) >= 14:
+                    if isinstance(val, list) and len(val) >= 6:
                         f_lat, f_lon = val[1], val[2]
                         on_ground = val[14] if len(val) > 14 else 0
                         if not on_ground and f_lat is not None and f_lon is not None:
                             dist_km = haversine_km(lat, lon, f_lat, f_lon)
                             if dist_km <= radius_km:
-                                callsign = (val[16] or val[13] or "").strip()
-                                heading_deg = val[3]
-                                alt_ft = val[4]
-                                speed_kt = val[5]
+                                callsign_raw = val[16] if len(val) > 16 else None
+                                flight_num = val[13] if len(val) > 13 else None
+                                callsign = (flight_num or callsign_raw or "").strip()
+                                alt_callsign = (callsign_raw or "").strip()
+                                heading_deg = val[3] if len(val) > 3 else None
+                                alt_ft = val[4] if len(val) > 4 else None
+                                speed_kt = val[5] if len(val) > 5 else None
                                 velocity_ms = speed_kt * 0.514444 if speed_kt else None
+                                speed_kmh = int(round(speed_kt * 1.852)) if speed_kt else None
                                 orig_code = val[11] if len(val) > 11 else None
                                 dest_code = val[12] if len(val) > 12 else None
                                 icao24 = val[0] if len(val) > 0 else None
@@ -289,10 +326,14 @@ def check_overhead_flight(config):
                                 airborne_flights.append({
                                     "dist_km": dist_km,
                                     "callsign": callsign,
+                                    "alt_callsign": alt_callsign,
                                     "f_lat": f_lat,
                                     "f_lon": f_lon,
                                     "heading_deg": heading_deg,
                                     "velocity_ms": velocity_ms,
+                                    "alt_ft": int(alt_ft) if alt_ft is not None else None,
+                                    "speed_kmh": speed_kmh,
+                                    "speed_kt": int(speed_kt) if speed_kt is not None else None,
                                     "origin_code": orig_code,
                                     "dest_code": dest_code,
                                     "icao24": icao24,
@@ -301,32 +342,84 @@ def check_overhead_flight(config):
         except Exception as e:
             logger.warning(f"FlightRadar24 live feed query error: {e}")
 
-        # 2. Secondary Fallback: OpenSky Network API
+        # 2. Secondary High-Speed Fallback: Open ADS-B Live Data (adsb.fi)
+        if not airborne_flights:
+            try:
+                adsb_url = f"https://opendata.adsb.fi/api/v2/lat/{lat}/lon/{lon}/dist/{int(radius_km * 1.15)}"
+                logger.info("Falling back to adsb.fi live API query...")
+                adsb_resp = requests.get(adsb_url, headers=headers, timeout=4.0)
+                if adsb_resp.status_code == 200:
+                    aircraft_list = adsb_resp.json().get("aircraft", [])
+                    for ac in aircraft_list:
+                        f_lat = ac.get("lat")
+                        f_lon = ac.get("lon")
+                        if f_lat is not None and f_lon is not None:
+                            dist_km = haversine_km(lat, lon, f_lat, f_lon)
+                            if dist_km <= radius_km:
+                                callsign = (ac.get("flight") or ac.get("r") or "").strip()
+                                alt_baro = ac.get("alt_baro")
+                                alt_geom = ac.get("alt_geom")
+                                alt_val = alt_baro if isinstance(alt_baro, (int, float)) else (alt_geom if isinstance(alt_geom, (int, float)) else None)
+                                speed_kt = ac.get("gs")
+                                speed_kmh = int(round(speed_kt * 1.852)) if isinstance(speed_kt, (int, float)) else None
+                                vel_ms = speed_kt * 0.514444 if isinstance(speed_kt, (int, float)) else None
+
+                                airborne_flights.append({
+                                    "dist_km": dist_km,
+                                    "callsign": callsign,
+                                    "alt_callsign": None,
+                                    "f_lat": f_lat,
+                                    "f_lon": f_lon,
+                                    "heading_deg": ac.get("track"),
+                                    "velocity_ms": vel_ms,
+                                    "alt_ft": int(alt_val) if alt_val is not None else None,
+                                    "speed_kmh": speed_kmh,
+                                    "speed_kt": int(round(speed_kt)) if isinstance(speed_kt, (int, float)) else None,
+                                    "origin_code": None,
+                                    "dest_code": None,
+                                    "icao24": ac.get("hex"),
+                                    "fr24_id": None
+                                })
+            except Exception as e:
+                logger.warning(f"adsb.fi fallback query error: {e}")
+
+        # 3. Tertiary Fallback: OpenSky Network API
         if not airborne_flights:
             try:
                 os_url = f"https://opensky-network.org/api/states/all?lamin={lamin:.4f}&lamax={lamax:.4f}&lomin={lomin:.4f}&lomax={lomax:.4f}"
                 logger.info("Falling back to OpenSky Network API query...")
-                os_resp = requests.get(os_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3.0)
+                os_resp = requests.get(os_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=4.0)
                 if os_resp.status_code == 200:
                     states = os_resp.json().get("states") or []
                     for f in states:
                         on_ground = f[8] if len(f) > 8 else False
-                        f_lat = f[6]
-                        f_lon = f[5]
+                        f_lat = f[6] if len(f) > 6 else None
+                        f_lon = f[5] if len(f) > 5 else None
                         if not on_ground and f_lat is not None and f_lon is not None:
                             dist_km = haversine_km(lat, lon, f_lat, f_lon)
                             if dist_km <= radius_km:
                                 callsign = (f[1] or "").strip()
+                                vel_ms = f[9] if len(f) > 9 and f[9] is not None else None
+                                alt_m = f[7] if (len(f) > 7 and f[7] is not None) else (f[13] if len(f) > 13 and f[13] is not None else None)
+                                alt_ft = int(round(alt_m * 3.28084)) if alt_m is not None else None
+                                speed_kmh = int(round(vel_ms * 3.6)) if vel_ms is not None else None
+                                speed_kt = int(round(vel_ms * 1.94384)) if vel_ms is not None else None
+
                                 airborne_flights.append({
                                     "dist_km": dist_km,
                                     "callsign": callsign,
+                                    "alt_callsign": None,
                                     "f_lat": f_lat,
                                     "f_lon": f_lon,
                                     "heading_deg": f[10] if len(f) > 10 else None,
-                                    "velocity_ms": f[9] if len(f) > 9 else None,
+                                    "velocity_ms": vel_ms,
+                                    "alt_ft": alt_ft,
+                                    "speed_kmh": speed_kmh,
+                                    "speed_kt": speed_kt,
                                     "origin_code": None,
                                     "dest_code": None,
-                                    "icao24": f[0] if len(f) > 0 else None
+                                    "icao24": f[0] if len(f) > 0 else None,
+                                    "fr24_id": None
                                 })
             except Exception as e:
                 logger.warning(f"OpenSky fallback query error: {e}")
@@ -335,55 +428,63 @@ def check_overhead_flight(config):
             # Sort by closest distance to user
             airborne_flights.sort(key=lambda x: x["dist_km"])
             
-            # Check each flight until we find one verified on FlightRadar24
-            verified_flight = None
+            # Select the closest aircraft
+            flight = airborne_flights[0]
             fr24_url = None
 
-            for candidate in airborne_flights:
-                cand_callsign = candidate["callsign"] or ""
+            # Check candidate flights to establish verified FlightRadar24 URL
+            for candidate in airborne_flights[:3]:
+                cand_callsign = candidate.get("callsign") or ""
+                cand_alt_callsign = candidate.get("alt_callsign") or ""
                 cand_icao24 = candidate.get("icao24") or ""
                 cand_fr24_id = candidate.get("fr24_id") or ""
 
                 # 1. Direct FR24 feed match URL
                 if cand_fr24_id:
-                    verified_flight = candidate
+                    flight = candidate
                     fr24_url = f"https://www.flightradar24.com/{cand_fr24_id}"
                     break
 
                 # 2. Query FR24 web find search API for active live match
-                search_queries = [q for q in [cand_callsign, cand_icao24] if q and q != "Unknown"]
+                search_queries = [q for q in [cand_callsign, cand_alt_callsign, cand_icao24] if q and q != "Unknown"]
                 for query in search_queries:
                     try:
                         search_url = f"https://www.flightradar24.com/v1/search/web/find?query={query.strip().lower()}"
-                        resp = requests.get(search_url, headers=headers, timeout=2.5)
+                        resp = requests.get(search_url, headers=headers, timeout=2.0)
                         if resp.status_code == 200:
                             results = resp.json().get("results", [])
                             for item in results:
                                 item_type = item.get("type")
                                 item_id = item.get("id")
                                 if item_type == "live" and item_id:
-                                    verified_flight = candidate
+                                    flight = candidate
                                     fr24_url = f"https://www.flightradar24.com/{item_id}"
                                     break
-                                elif item_type in ["live", 'aircraft', 'schedule']:
+                                elif item_type in ["live", "aircraft", "schedule"]:
                                     flight_code = item.get("detail", {}).get("flight") or cand_callsign
                                     if flight_code:
-                                        verified_flight = candidate
+                                        flight = candidate
                                         fr24_url = f"https://www.flightradar24.com/flight/{flight_code.lower()}"
                                         break
-                            if verified_flight:
+                            if fr24_url:
                                 break
                     except Exception as e:
                         logger.debug(f"FlightRadar24 verification query error for {query}: {e}")
 
-                if verified_flight:
+                if fr24_url:
                     break
 
-            if not verified_flight:
-                logger.info(f"Flights were found by feed/fallback, but none were verified to be active on FlightRadar24.")
-                return None
+            # Fallback URL when direct FR24 search didn't match a live page
+            if not fr24_url:
+                c_call = flight.get("callsign")
+                c_hex = flight.get("icao24")
+                if c_call and c_call != "Unknown":
+                    fr24_url = f"https://www.flightradar24.com/flight/{c_call.lower()}"
+                elif c_hex:
+                    fr24_url = f"https://www.flightradar24.com/data/aircraft/{c_hex.lower()}"
+                else:
+                    fr24_url = f"https://www.flightradar24.com/{flight['f_lat']:.2f},{flight['f_lon']:.2f}/11"
 
-            flight = verified_flight
             closest_dist_km = flight["dist_km"]
             callsign = flight["callsign"] or "Unknown"
 
@@ -391,13 +492,15 @@ def check_overhead_flight(config):
             orig_code = flight["origin_code"]
             dest_code = flight["dest_code"]
             if not orig_code or not dest_code:
-                orig_code, dest_code = get_flight_route(callsign)
+                orig_code, dest_code = get_flight_route(flight.get("alt_callsign") or callsign)
 
             origin_name = format_airport_name(orig_code)
             dest_name = format_airport_name(dest_code)
 
             velocity_ms = flight["velocity_ms"]
             heading_deg = flight["heading_deg"]
+            alt_ft = flight.get("alt_ft")
+            speed_kmh = flight.get("speed_kmh")
             f_lat = flight["f_lat"]
             f_lon = flight["f_lon"]
 
@@ -416,21 +519,30 @@ def check_overhead_flight(config):
                 if t_seconds > 10:
                     t_min = max(1, int(round(t_seconds / 60.0)))
                     unit = "min" if t_min == 1 else "mins"
-                    time_estimate_phrase = f"will cross your coordinates at exactly {t_min} {unit}."
+                    time_estimate_phrase = f"will cross your coordinates at exactly {t_min} {unit}"
                 elif t_seconds >= -45:
-                    time_estimate_phrase = "is crossing your coordinates right now."
+                    time_estimate_phrase = "is crossing your coordinates right now"
                 else:
-                    time_estimate_phrase = "has just crossed your coordinates."
+                    time_estimate_phrase = "has just crossed your coordinates"
             else:
                 t_seconds = (closest_dist_km * 1000.0) / 230.0
                 t_min = max(1, int(round(t_seconds / 60.0)))
                 unit = "min" if t_min == 1 else "mins"
-                time_estimate_phrase = f"will cross your coordinates at exactly {t_min} {unit}."
+                time_estimate_phrase = f"will cross your coordinates at exactly {t_min} {unit}"
+
+            if alt_ft and alt_ft > 0 and speed_kmh and speed_kmh > 0:
+                stats_clause = f", at an altitude of {alt_ft:,} feet and a speed of approximately {speed_kmh} kilometers per hour."
+            elif alt_ft and alt_ft > 0:
+                stats_clause = f", at an altitude of {alt_ft:,} feet."
+            elif speed_kmh and speed_kmh > 0:
+                stats_clause = f", at a speed of approximately {speed_kmh} kilometers per hour."
+            else:
+                stats_clause = "."
 
             if origin_name and dest_name:
-                spoken_text = f"Sir, Flight {callsign} from {origin_name} to {dest_name} {time_estimate_phrase}"
+                spoken_text = f"Sir, Flight {callsign} from {origin_name} to {dest_name} {time_estimate_phrase}{stats_clause}"
             else:
-                spoken_text = f"Sir, Flight {callsign} {time_estimate_phrase}"
+                spoken_text = f"Sir, Flight {callsign} {time_estimate_phrase}{stats_clause}"
 
             logger.info(f"Overhead flight verified on FlightRadar24: Callsign={callsign}, URL={fr24_url}, Spoken='{spoken_text}'")
 
@@ -440,6 +552,9 @@ def check_overhead_flight(config):
                 "icao24": flight.get("icao24"),
                 "origin": origin_name,
                 "destination": dest_name,
+                "altitude_ft": alt_ft,
+                "speed_kmh": speed_kmh,
+                "speed_kt": flight.get("speed_kt"),
                 "lat": f_lat,
                 "lon": f_lon,
                 "fr24_url": fr24_url
