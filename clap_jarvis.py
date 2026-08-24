@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-clap-jarvis: macOS background utility to detect double claps, double snaps, or spoken wake-word "Jarvis",
-respond with a human-like neural butler TTS (edge-tts), and track overhead flights on FlightRadar24.
-"""
 
 import argparse
 import asyncio
@@ -29,17 +25,25 @@ try:
 except ImportError:
     HAS_EDGE_TTS = False
 
-# Default Fallback Configurations (optimized for sensitivity and human-like neural voice)
+try:
+    from activity_monitor import check_trigger_permitted, is_audio_playing, is_in_meeting
+except ImportError:
+    # Fallback if module loaded differently
+    from .activity_monitor import check_trigger_permitted, is_audio_playing, is_in_meeting
+
+# Default Fallback Configurations (optimized for precise snap/clap detection and human-like neural voice)
 DEFAULT_CONFIG = {
-    "threshold_peak": 0.22,         # Clap peak threshold (prevents voice false-positives)
-    "threshold_snap_peak": 0.12,   # Snap peak threshold
-    "min_crest_factor": 4.0,        # High peak-to-RMS ratio (sharp percussive transients like claps/snaps)
-    "threshold_rms": 0.006,         # RMS energy floor
-    "required_claps": 3,            # Requires exactly 3 snaps or claps
-    "window_seconds": 4.5,          # Flexible window for fast or slow claps/snaps
-    "cooldown_seconds": 5.0,        # Pause after trigger to prevent self-triggering from TTS
+    "threshold_peak": 0.18,         # Clap peak threshold (prevents voice false-positives)
+    "threshold_snap_peak": 0.12,    # Snap peak threshold (responsive to deliberate finger snaps)
+    "min_crest_factor": 4.5,        # Sharp percussive transient crest factor (filters ambient noise)
+    "threshold_rms": 0.004,         # RMS energy floor
+    "required_claps": 2,            # Requires 2 snaps or claps
+    "window_seconds": 2.5,          # Window for double snap/clap
+    "cooldown_seconds": 4.0,        # Pause after trigger to prevent self-triggering from TTS
     "voice": "en-GB-RyanNeural",    # Ultra-realistic British Male Neural Voice (JARVIS)
     "enable_flight_check": True,
+    "suppress_during_audio": True,   # Block trigger when audio is playing from any browser/player
+    "suppress_during_meetings": True, # Block trigger when user is in a meeting (Zoom, Meet, Teams, FaceTime)
     "latitude": 23.23352,            # MP Nagar, Bhopal coordinates
     "longitude": 77.43257,
     "radius_km": 150.0,
@@ -130,64 +134,291 @@ def load_phrases():
 
 
 AIRPORT_NAMES = {
+    # India - Major Metros & Hubs
     "VIDP": "Delhi", "DEL": "Delhi",
     "VABB": "Mumbai", "BOM": "Mumbai",
+    "NMI": "Navi Mumbai",
     "VOBL": "Bengaluru", "BLR": "Bengaluru",
     "VOMM": "Chennai", "MAA": "Chennai",
     "VECC": "Kolkata", "CCU": "Kolkata",
     "VHYD": "Hyderabad", "HYD": "Hyderabad",
-    "EGLL": "London Heathrow", "LHR": "London Heathrow",
-    "KJFK": "New York JFK", "JFK": "New York JFK",
-    "OMDB": "Dubai", "DXB": "Dubai",
-    "WSSS": "Singapore", "SIN": "Singapore",
     "VAAH": "Ahmedabad", "AMD": "Ahmedabad",
-    "VAGO": "Goa", "GOI": "Goa",
+    "VAPO": "Pune", "PNQ": "Pune",
+    "VAGO": "Goa Dabolim", "GOI": "Goa Dabolim",
     "VOGA": "Goa Mopa", "GOX": "Goa Mopa",
+
+    # India - Madhya Pradesh & Central India
     "VABP": "Bhopal", "BHO": "Bhopal",
     "VAID": "Indore", "IDR": "Indore",
-    "VAAU": "Aurangabad", "IXU": "Aurangabad",
-    "VASD": "Shirdi", "SAG": "Shirdi",
+    "VIGW": "Gwalior", "GWL": "Gwalior",
+    "VAJB": "Jabalpur", "JLR": "Jabalpur",
+    "VAKJ": "Khajuraho", "HJR": "Khajuraho",
     "VARP": "Raipur", "RPR": "Raipur",
-    "WMKK": "Kuala Lumpur", "KUL": "Kuala Lumpur",
-    "KLAX": "Los Angeles", "LAX": "Los Angeles",
-    "OTHH": "Doha", "DOH": "Doha",
-    "EDDF": "Frankfurt", "FRA": "Frankfurt",
-    "LFPG": "Paris CDG", "CDG": "Paris CDG",
-    "VTBS": "Bangkok", "BKK": "Bangkok",
-    "VOCI": "Cochin", "COK": "Cochin",
-    "VAPO": "Pune", "PNQ": "Pune",
-    "VIJP": "Jaipur", "JAI": "Jaipur",
     "VAPM": "Nagpur", "NAG": "Nagpur",
+
+    # India - North & Northwest
+    "VIJP": "Jaipur", "JAI": "Jaipur",
     "VICG": "Chandigarh", "IXC": "Chandigarh",
     "VILK": "Lucknow", "LKO": "Lucknow",
     "VEBN": "Varanasi", "VNS": "Varanasi",
     "VEPT": "Patna", "PAT": "Patna",
-    "VEGT": "Guwahati", "GAU": "Guwahati",
-    "VEBD": "Bagdogra", "IXB": "Bagdogra",
+    "VEAY": "Ayodhya", "AYJ": "Ayodhya",
     "VIAR": "Amritsar", "ATQ": "Amritsar",
     "VISR": "Srinagar", "SXR": "Srinagar",
     "VIJU": "Jammu", "IXJ": "Jammu",
     "VILH": "Leh", "IXL": "Leh",
+    "VIDN": "Dehradun", "DED": "Dehradun",
+    "VIJO": "Jodhpur", "JDH": "Jodhpur",
+    "VAUD": "Udaipur", "UDR": "Udaipur",
+    "VIJR": "Jaisalmer", "JSA": "Jaisalmer",
+    "VABK": "Bikaner", "BKB": "Bikaner",
+    "VAKP": "Kanpur", "KNU": "Kanpur",
+    "VIAG": "Agra", "AGR": "Agra",
+    "VEGK": "Gorakhpur", "GOP": "Gorakhpur",
+    "VIBL": "Bareilly", "BEK": "Bareilly",
+    "VIPM": "Pantnagar", "PGH": "Pantnagar",
+    "VIBR": "Kullu", "KUU": "Kullu",
+    "VIGG": "Dharamsala", "DHM": "Dharamsala",
+
+    # India - West & Southwest
     "VABO": "Vadodara", "BDQ": "Vadodara",
     "VASU": "Surat", "STV": "Surat",
-    "VAUD": "Udaipur", "UDR": "Udaipur",
-    "VIJO": "Jodhpur", "JDH": "Jodhpur",
-    "VERC": "Ranchi", "IXR": "Ranchi",
-    "VEBS": "Bhubaneswar", "BBI": "Bhubaneswar",
-    "VOVZ": "Visakhapatnam", "VTZ": "Visakhapatnam",
-    "VOBZ": "Vijayawada", "VGA": "Vijayawada",
-    "VOMD": "Madurai", "IXM": "Madurai",
-    "VOCB": "Coimbatore", "CJB": "Coimbatore",
-    "VOTR": "Tiruchirappalli", "TRZ": "Tiruchirappalli",
-    "VOTP": "Tirupati", "TIR": "Tirupati",
+    "VAJM": "Jamnagar", "JGA": "Jamnagar",
+    "VARK": "Rajkot", "RAJ": "Rajkot",
+    "VABJ": "Bhuj", "BHJ": "Bhuj",
+    "VAPR": "Porbandar", "PBD": "Porbandar",
+    "VASD": "Shirdi", "SAG": "Shirdi",
+    "VAAU": "Aurangabad", "IXU": "Aurangabad",
+    "VAKL": "Kolhapur", "KLH": "Kolhapur",
+    "VANR": "Nanded", "NDC": "Nanded",
+
+    # India - South
+    "VOCI": "Cochin", "COK": "Cochin",
     "VOTV": "Trivandrum", "TRV": "Trivandrum",
     "VOCL": "Calicut", "CCJ": "Calicut",
-    "VEAY": "Ayodhya", "AYJ": "Ayodhya",
+    "VOCN": "Kannur", "CNN": "Kannur",
+    "VOML": "Mangalore", "IXE": "Mangalore",
+    "VOCB": "Coimbatore", "CJB": "Coimbatore",
+    "VOMD": "Madurai", "IXM": "Madurai",
+    "VOTR": "Tiruchirappalli", "TRZ": "Tiruchirappalli",
+    "VOTP": "Tirupati", "TIR": "Tirupati",
+    "VOVZ": "Visakhapatnam", "VTZ": "Visakhapatnam",
+    "VOBZ": "Vijayawada", "VGA": "Vijayawada",
+    "VOHB": "Hubli", "HBX": "Hubli",
+    "VOBM": "Belgaum", "IXG": "Belgaum",
+    "VOMY": "Mysore", "MYQ": "Mysore",
+
+    # India - East & Northeast
+    "VEGT": "Guwahati", "GAU": "Guwahati",
+    "VEBD": "Bagdogra", "IXB": "Bagdogra",
+    "VEBS": "Bhubaneswar", "BBI": "Bhubaneswar",
+    "VERC": "Ranchi", "IXR": "Ranchi",
+    "VEBI": "Shillong", "SHL": "Shillong",
+    "VEIM": "Imphal", "IMF": "Imphal",
+    "VEAZ": "Aizawl", "AJL": "Aizawl",
+    "VEAT": "Agartala", "IXA": "Agartala",
+    "VEDI": "Dibrugarh", "DIB": "Dibrugarh",
+    "VETZ": "Tezpur", "TEZ": "Tezpur",
+    "VESL": "Silchar", "IXS": "Silchar",
+    "VEMR": "Dimapur", "DMU": "Dimapur",
+    "VEPY": "Pakyong", "PYG": "Pakyong",
+
+    # Middle East & Gulf Hubs
+    "OMAA": "Abu Dhabi", "AUH": "Abu Dhabi",
+    "OMDB": "Dubai", "DXB": "Dubai",
+    "OMDW": "Dubai World Central", "DWC": "Dubai World Central",
+    "OMSJ": "Sharjah", "SHJ": "Sharjah",
+    "OTHH": "Doha", "DOH": "Doha",
+    "OEMA": "Medina", "MED": "Medina",
+    "OEJN": "Jeddah", "JED": "Jeddah",
+    "OERK": "Riyadh", "RUH": "Riyadh",
+    "OEDF": "Dammam", "DMM": "Dammam",
+    "OOMS": "Muscat", "MCT": "Muscat",
+    "OBBI": "Bahrain", "BAH": "Bahrain",
+    "OKBK": "Kuwait City", "KWI": "Kuwait City",
+    "HECA": "Cairo", "CAI": "Cairo",
+    "LLBG": "Tel Aviv", "TLV": "Tel Aviv",
+
+    # Asia & Pacific
+    "WSSS": "Singapore", "SIN": "Singapore",
+    "WMKK": "Kuala Lumpur", "KUL": "Kuala Lumpur",
+    "VTBS": "Bangkok Suvarnabhumi", "BKK": "Bangkok Suvarnabhumi",
+    "VTBD": "Bangkok Don Mueang", "DMK": "Bangkok Don Mueang",
+    "VTSP": "Phuket", "HKT": "Phuket",
     "VHHH": "Hong Kong", "HKG": "Hong Kong",
     "VVNB": "Hanoi", "HAN": "Hanoi",
-    "OERK": "Riyadh", "RUH": "Riyadh",
-    "VCBI": "Colombo", "CMB": "Colombo"
+    "VVTS": "Ho Chi Minh City", "SGN": "Ho Chi Minh City",
+    "VGHS": "Dhaka", "DAC": "Dhaka",
+    "VNKT": "Kathmandu", "KTM": "Kathmandu",
+    "VRMM": "Maldives Male", "MLE": "Maldives Male",
+    "VCBI": "Colombo", "CMB": "Colombo",
+    "RPLL": "Manila", "MNL": "Manila",
+    "WADD": "Bali", "DPS": "Bali",
+    "WIII": "Jakarta", "CGK": "Jakarta",
+    "RJAA": "Tokyo Narita", "NRT": "Tokyo Narita",
+    "RJTT": "Tokyo Haneda", "HND": "Tokyo Haneda",
+    "RJBB": "Osaka", "KIX": "Osaka",
+    "RKSI": "Seoul Incheon", "ICN": "Seoul Incheon",
+    "ZSPD": "Shanghai Pudong", "PVG": "Shanghai Pudong",
+    "ZBAA": "Beijing Capital", "PEK": "Beijing Capital",
+    "ZGSZ": "Shenzhen", "SZX": "Shenzhen",
+    "ZGGG": "Guangzhou", "CAN": "Guangzhou",
+    "RCTP": "Taipei", "TPE": "Taipei",
+    "YSSY": "Sydney", "SYD": "Sydney",
+    "YMML": "Melbourne", "MEL": "Melbourne",
+    "YPPH": "Perth", "PER": "Perth",
+    "NZAA": "Auckland", "AKL": "Auckland",
+
+    # Europe & UK
+    "EGLL": "London Heathrow", "LHR": "London Heathrow",
+    "EGKK": "London Gatwick", "LGW": "London Gatwick",
+    "EGSS": "London Stansted", "STN": "London Stansted",
+    "EGCC": "Manchester", "MAN": "Manchester",
+    "EGPH": "Edinburgh", "EDI": "Edinburgh",
+    "LFPG": "Paris Charles de Gaulle", "CDG": "Paris Charles de Gaulle",
+    "LFPO": "Paris Orly", "ORY": "Paris Orly",
+    "EDDF": "Frankfurt", "FRA": "Frankfurt",
+    "EDDM": "Munich", "MUC": "Munich",
+    "EDDB": "Berlin", "BER": "Berlin",
+    "EHAM": "Amsterdam", "AMS": "Amsterdam",
+    "LSZH": "Zurich", "ZRH": "Zurich",
+    "LOWW": "Vienna", "VIE": "Vienna",
+    "LIRF": "Rome Fiumicino", "FCO": "Rome Fiumicino",
+    "LIMC": "Milan Malpensa", "MXP": "Milan Malpensa",
+    "LEMD": "Madrid", "MAD": "Madrid",
+    "LEBL": "Barcelona", "BCN": "Barcelona",
+    "LTFM": "Istanbul", "IST": "Istanbul",
+    "LTFJ": "Istanbul Sabiha", "SAW": "Istanbul Sabiha",
+
+    # North America
+    "KJFK": "New York JFK", "JFK": "New York JFK",
+    "KEWR": "Newark", "EWR": "Newark",
+    "KLAX": "Los Angeles", "LAX": "Los Angeles",
+    "KSFO": "San Francisco", "SFO": "San Francisco",
+    "KORD": "Chicago O'Hare", "ORD": "Chicago O'Hare",
+    "KATL": "Atlanta", "ATL": "Atlanta",
+    "KDFW": "Dallas Fort Worth", "DFW": "Dallas Fort Worth",
+    "KIAH": "Houston", "IAH": "Houston",
+    "KMIA": "Miami", "MIA": "Miami",
+    "KBOS": "Boston", "BOS": "Boston",
+    "KSEA": "Seattle", "SEA": "Seattle",
+    "CYYZ": "Toronto Pearson", "YYZ": "Toronto Pearson",
+    "CYVR": "Vancouver", "YVR": "Vancouver",
+    "CYUL": "Montreal", "YUL": "Montreal",
+
+    # Africa
+    "FAOR": "Johannesburg", "JNB": "Johannesburg",
+    "FACT": "Cape Town", "CPT": "Cape Town",
+    "HKJK": "Nairobi", "NBO": "Nairobi",
+    "HAAB": "Addis Ababa", "ADD": "Addis Ababa"
 }
+
+AIRPORT_CACHE = {}
+
+
+def format_airport_name(code):
+    """Converts ICAO/IATA airport code or city string to a human-readable city/airport name."""
+    if not code:
+        return None
+
+    # Clean string if formatted like "Rome (FCO)" or "Abu Dhabi / AUH"
+    if "(" in code and ")" in code:
+        code_clean = code.split("(")[0].strip()
+        if code_clean:
+            return code_clean
+
+    code_upper = code.upper().strip()
+    if code_upper in AIRPORT_NAMES:
+        return AIRPORT_NAMES[code_upper]
+
+    if code_upper in AIRPORT_CACHE:
+        return AIRPORT_CACHE[code_upper]
+
+    # Dynamic fallback lookup if code is a 3-letter IATA or 4-letter ICAO
+    if len(code_upper) in [3, 4] and code_upper.isalpha():
+        try:
+            url = f"https://hexdb.io/api/v1/airport/iata/{code_upper}" if len(code_upper) == 3 else f"https://hexdb.io/api/v1/airport/icao/{code_upper}"
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=1.2)
+            if resp.status_code == 200:
+                data = resp.json()
+                city = data.get("city") or data.get("name")
+                if city:
+                    AIRPORT_CACHE[code_upper] = city
+                    return city
+        except Exception:
+            pass
+
+    return code.strip()
+
+
+AIRLINE_NAMES = {
+    # Indian Carriers
+    "6E": "IndiGo", "IGO": "IndiGo",
+    "AI": "Air India", "AIC": "Air India",
+    "IX": "Air India Express", "AXB": "Air India Express",
+    "QP": "Akasa Air", "AKJ": "Akasa Air",
+    "SG": "SpiceJet", "SEJ": "SpiceJet",
+    "UK": "Vistara", "VTI": "Vistara",
+    "I5": "AirAsia India", "IAD": "AirAsia India",
+    "9I": "Alliance Air", "LLR": "Alliance Air",
+    "S5": "Star Air", "SDG": "Star Air",
+    "FLG": "FlyBig", "FLY": "FlyBig",
+
+    # Middle East & Gulf Carriers
+    "EK": "Emirates", "UAE": "Emirates",
+    "FZ": "Flydubai", "FDB": "Flydubai",
+    "QR": "Qatar Airways", "QTR": "Qatar Airways",
+    "EY": "Etihad Airways", "ETD": "Etihad Airways",
+    "G9": "Air Arabia", "ABY": "Air Arabia",
+    "SV": "Saudia", "SVA": "Saudia",
+    "WY": "Oman Air", "OMA": "Oman Air",
+    "GF": "Gulf Air", "GFA": "Gulf Air",
+    "J9": "Jazeera Airways", "JZR": "Jazeera Airways",
+    "KU": "Kuwait Airways", "KAC": "Kuwait Airways",
+
+    # Asian & Global Carriers
+    "SQ": "Singapore Airlines", "SIA": "Singapore Airlines",
+    "TG": "Thai Airways", "THA": "Thai Airways",
+    "MH": "Malaysia Airlines", "MAS": "Malaysia Airlines",
+    "CX": "Cathay Pacific", "CPA": "Cathay Pacific",
+    "BA": "British Airways", "BAW": "British Airways",
+    "LH": "Lufthansa", "DLH": "Lufthansa",
+    "AF": "Air France", "AFR": "Air France",
+    "KL": "KLM", "KLM": "KLM",
+    "TK": "Turkish Airlines", "THY": "Turkish Airlines",
+    "UL": "SriLankan Airlines", "ALK": "SriLankan Airlines",
+    "FDX": "FedEx", "UPS": "UPS"
+}
+
+
+def format_flight_spoken(callsign, flight_num=None, airline_code=None):
+    """Formats a FlightRadar24 call sign (e.g. AIC5QY, AXB2153) for natural, accurate TTS pronunciation and display."""
+    raw_cs = (callsign or "").strip().upper()
+    raw_num = (flight_num or "").strip().upper()
+
+    # Primary identifier: Call Sign (e.g. AIC5QY)
+    code = raw_cs if raw_cs and raw_cs != "UNKNOWN" else raw_num
+    if not code or code == "UNKNOWN":
+        return "an unidentified aircraft", "Unknown"
+
+    airline_name = None
+    if airline_code and airline_code in AIRLINE_NAMES:
+        airline_name = AIRLINE_NAMES[airline_code]
+    else:
+        # Check airline code prefix in AIRLINE_NAMES
+        for pfx_len in [3, 2]:
+            pfx = code[:pfx_len]
+            if pfx in AIRLINE_NAMES:
+                airline_name = AIRLINE_NAMES[pfx]
+                break
+
+    if airline_name:
+        spoken = f"{airline_name} Flight {code}"
+    else:
+        spoken = f"Flight {code}"
+
+    display_flight = code
+    return spoken, display_flight
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -271,10 +502,7 @@ def format_airport_name(code):
 
 
 def check_overhead_flight(config):
-    """
-    Checks live flight feeds (FlightRadar24 live feed primary, adsb.fi & OpenSky fallbacks) for planes overhead.
-    Returns dict with flight details & spoken string if found, or None.
-    """
+    """Checks live flight feeds (FlightRadar24 primary, adsb.fi & OpenSky fallbacks) for planes overhead; returns details dict or None."""
     try:
         lat = float(config.get("latitude", 23.23352))
         lon = float(config.get("longitude", 77.43257))
@@ -312,8 +540,9 @@ def check_overhead_flight(config):
                             if dist_km <= radius_km:
                                 callsign_raw = val[16] if len(val) > 16 else None
                                 flight_num = val[13] if len(val) > 13 else None
-                                callsign = (flight_num or callsign_raw or "").strip()
-                                alt_callsign = (callsign_raw or "").strip()
+                                airline_icao = val[18] if len(val) > 18 else None
+                                callsign = (callsign_raw or flight_num or "").strip().upper()
+                                alt_callsign = (flight_num or callsign_raw or "").strip().upper()
                                 heading_deg = val[3] if len(val) > 3 else None
                                 alt_ft = val[4] if len(val) > 4 else None
                                 speed_kt = val[5] if len(val) > 5 else None
@@ -326,7 +555,9 @@ def check_overhead_flight(config):
                                 airborne_flights.append({
                                     "dist_km": dist_km,
                                     "callsign": callsign,
+                                    "flight_number": flight_num,
                                     "alt_callsign": alt_callsign,
+                                    "airline_icao": airline_icao,
                                     "f_lat": f_lat,
                                     "f_lon": f_lon,
                                     "heading_deg": heading_deg,
@@ -428,62 +659,15 @@ def check_overhead_flight(config):
             # Sort by closest distance to user
             airborne_flights.sort(key=lambda x: x["dist_km"])
             
-            # Select the closest aircraft
+            # Select the closest aircraft and build guaranteed verified FlightRadar24 URL
             flight = airborne_flights[0]
-            fr24_url = None
+            cand_fr24_id = flight.get("fr24_id")
 
-            # Check candidate flights to establish verified FlightRadar24 URL
-            for candidate in airborne_flights[:3]:
-                cand_callsign = candidate.get("callsign") or ""
-                cand_alt_callsign = candidate.get("alt_callsign") or ""
-                cand_icao24 = candidate.get("icao24") or ""
-                cand_fr24_id = candidate.get("fr24_id") or ""
-
-                # 1. Direct FR24 feed match URL
-                if cand_fr24_id:
-                    flight = candidate
-                    fr24_url = f"https://www.flightradar24.com/{cand_fr24_id}"
-                    break
-
-                # 2. Query FR24 web find search API for active live match
-                search_queries = [q for q in [cand_callsign, cand_alt_callsign, cand_icao24] if q and q != "Unknown"]
-                for query in search_queries:
-                    try:
-                        search_url = f"https://www.flightradar24.com/v1/search/web/find?query={query.strip().lower()}"
-                        resp = requests.get(search_url, headers=headers, timeout=2.0)
-                        if resp.status_code == 200:
-                            results = resp.json().get("results", [])
-                            for item in results:
-                                item_type = item.get("type")
-                                item_id = item.get("id")
-                                if item_type == "live" and item_id:
-                                    flight = candidate
-                                    fr24_url = f"https://www.flightradar24.com/{item_id}"
-                                    break
-                                elif item_type in ["live", "aircraft", "schedule"]:
-                                    flight_code = item.get("detail", {}).get("flight") or cand_callsign
-                                    if flight_code:
-                                        flight = candidate
-                                        fr24_url = f"https://www.flightradar24.com/flight/{flight_code.lower()}"
-                                        break
-                            if fr24_url:
-                                break
-                    except Exception as e:
-                        logger.debug(f"FlightRadar24 verification query error for {query}: {e}")
-
-                if fr24_url:
-                    break
-
-            # Fallback URL when direct FR24 search didn't match a live page
-            if not fr24_url:
-                c_call = flight.get("callsign")
-                c_hex = flight.get("icao24")
-                if c_call and c_call != "Unknown":
-                    fr24_url = f"https://www.flightradar24.com/flight/{c_call.lower()}"
-                elif c_hex:
-                    fr24_url = f"https://www.flightradar24.com/data/aircraft/{c_hex.lower()}"
-                else:
-                    fr24_url = f"https://www.flightradar24.com/{flight['f_lat']:.2f},{flight['f_lon']:.2f}/11"
+            if cand_fr24_id:
+                fr24_url = f"https://www.flightradar24.com/{cand_fr24_id}"
+            else:
+                # Center directly on aircraft coordinates to guarantee a clean map without 404 popup
+                fr24_url = f"https://www.flightradar24.com/{flight['f_lat']:.2f},{flight['f_lon']:.2f}/11"
 
             closest_dist_km = flight["dist_km"]
             callsign = flight["callsign"] or "Unknown"
@@ -539,16 +723,23 @@ def check_overhead_flight(config):
             else:
                 stats_clause = "."
 
-            if origin_name and dest_name:
-                spoken_text = f"Sir, Flight {callsign} from {origin_name} to {dest_name} {time_estimate_phrase}{stats_clause}"
-            else:
-                spoken_text = f"Sir, Flight {callsign} {time_estimate_phrase}{stats_clause}"
+            spoken_flight, display_flight = format_flight_spoken(
+                flight.get("callsign"),
+                flight.get("flight_number"),
+                flight.get("airline_icao")
+            )
 
-            logger.info(f"Overhead flight verified on FlightRadar24: Callsign={callsign}, URL={fr24_url}, Spoken='{spoken_text}'")
+            if origin_name and dest_name:
+                spoken_text = f"Sir, {spoken_flight} from {origin_name} to {dest_name} {time_estimate_phrase}{stats_clause}"
+            else:
+                spoken_text = f"Sir, {spoken_flight} {time_estimate_phrase}{stats_clause}"
+
+            logger.info(f"Overhead flight verified on FlightRadar24: Callsign={display_flight}, URL={fr24_url}, Spoken='{spoken_text}'")
 
             return {
                 "spoken_text": spoken_text,
-                "callsign": callsign if callsign != "Unknown" else None,
+                "callsign": display_flight if display_flight != "Unknown" else (callsign if callsign != "Unknown" else None),
+                "flight_number": flight.get("flight_number"),
                 "icao24": flight.get("icao24"),
                 "origin": origin_name,
                 "destination": dest_name,
@@ -567,7 +758,83 @@ def check_overhead_flight(config):
     return None
 
 
-def speak_and_launch(phrase, voice, flight_data=None):
+def open_or_refresh_flightradar_tab(target_url):
+    """Refreshes an existing FlightRadar24 tab in any running browser if present, otherwise opens a new tab via webbrowser.open()."""
+    chromium_candidates = [
+        ("brave browser", "Brave Browser"),
+        ("google chrome", "Google Chrome"),
+        ("microsoft edge", "Microsoft Edge"),
+        ("arc", "Arc"),
+        ("opera", "Opera"),
+        ("vivaldi", "Vivaldi")
+    ]
+
+    try:
+        from activity_monitor import get_running_process_basenames
+        running = get_running_process_basenames()
+    except Exception:
+        running = set()
+
+    for proc_key, app_title in chromium_candidates:
+        if proc_key in running:
+            scpt = f"""
+            tell application "{app_title}"
+                repeat with w in windows
+                    set tIndex to 0
+                    repeat with t in tabs of w
+                        set tIndex to tIndex + 1
+                        if (URL of t) contains "flightradar24.com" then
+                            set URL of t to "{target_url}"
+                            set active tab index of w to tIndex
+                            set index of w to 1
+                            activate
+                            return "updated"
+                        end if
+                    end repeat
+                end repeat
+                return "not_found"
+            end tell
+            """
+            try:
+                res = subprocess.check_output(["osascript", "-e", scpt], universal_newlines=True, timeout=0.8).strip()
+                if res == "updated":
+                    logger.info(f"Refreshed existing FlightRadar24 tab in {app_title} to '{target_url}' (no duplicate tab opened).")
+                    return True
+            except Exception:
+                pass
+
+    if "safari" in running:
+        safari_scpt = f"""
+        tell application "Safari"
+            repeat with w in windows
+                repeat with t in tabs of w
+                    if (URL of t) contains "flightradar24.com" then
+                        set URL of t to "{target_url}"
+                        set current tab of w to t
+                        set index of w to 1
+                        activate
+                        return "updated"
+                    end if
+                end repeat
+            end repeat
+            return "not_found"
+        end tell
+        """
+        try:
+            res = subprocess.check_output(["osascript", "-e", safari_scpt], universal_newlines=True, timeout=0.8).strip()
+            if res == "updated":
+                logger.info(f"Refreshed existing FlightRadar24 tab in Safari to '{target_url}' (no duplicate tab opened).")
+                return True
+        except Exception:
+            pass
+
+    # Fallback to standard new browser tab if no existing FlightRadar24 tab was found
+    logger.info(f"No existing FlightRadar24 tab found. Opening in default browser: {target_url}")
+    webbrowser.open(target_url)
+    return False
+
+
+def speak_and_launch(phrase, voice, flight_data=None, on_done=None):
     """Speaks phrase non-blockingly using neural TTS (edge-tts) or macOS 'say' fallback."""
     logger.info(f"Speaking response using voice '{voice}': '{phrase}'")
 
@@ -581,60 +848,68 @@ def speak_and_launch(phrase, voice, flight_data=None):
         elif target_voice in ["Thomas"]:
             target_voice = "en-GB-ThomasNeural"
 
-        # 1. Try Ultra-Realistic Neural TTS via edge-tts
-        if HAS_EDGE_TTS and ("Neural" in target_voice or "en-GB" in target_voice):
-            tmp_mp3 = f"/tmp/jarvis_speech_{int(time.time()*1000)}.mp3"
-            try:
-                async def generate():
-                    communicate = edge_tts.Communicate(phrase, target_voice)
-                    await communicate.save(tmp_mp3)
+        try:
+            # 1. Try Ultra-Realistic Neural TTS via edge-tts
+            if HAS_EDGE_TTS and ("Neural" in target_voice or "en-GB" in target_voice):
+                tmp_mp3 = f"/tmp/jarvis_speech_{int(time.time()*1000)}.mp3"
+                try:
+                    async def generate():
+                        communicate = edge_tts.Communicate(phrase, target_voice)
+                        await communicate.save(tmp_mp3)
 
-                asyncio.run(generate())
-                subprocess.run(["afplay", tmp_mp3], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                played_successfully = True
-            except Exception as e:
-                logger.warning(f"edge-tts neural generation failed ({e}), falling back to macOS 'say'.")
-            finally:
-                if os.path.exists(tmp_mp3):
-                    try:
-                        os.remove(tmp_mp3)
-                    except Exception:
-                        pass
+                    asyncio.run(generate())
+                    subprocess.run(["afplay", tmp_mp3], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    played_successfully = True
+                except Exception as e:
+                    logger.warning(f"edge-tts neural generation failed ({e}), falling back to macOS 'say'.")
+                finally:
+                    if os.path.exists(tmp_mp3):
+                        try:
+                            os.remove(tmp_mp3)
+                        except Exception:
+                            pass
 
-        # 2. Fallback to native macOS 'say' command
-        if not played_successfully:
-            try:
-                subprocess.run(["say", "-v", "Daniel", phrase])
-            except Exception as e:
-                logger.error(f"Failed to execute native 'say' command: {e}")
+            # 2. Fallback to native macOS 'say' command
+            if not played_successfully:
+                try:
+                    subprocess.run(["say", "-v", "Daniel", phrase])
+                except Exception as e:
+                    logger.error(f"Failed to execute native 'say' command: {e}")
+        finally:
+            if on_done:
+                try:
+                    on_done()
+                except Exception as e:
+                    logger.error(f"Error in on_done speech callback: {e}")
 
-    # Launch speech in background thread
+    # Launch browser open/refresh concurrently in parallel background thread
+    def launch_browser():
+        try:
+            if flight_data and flight_data.get("fr24_url"):
+                url = flight_data["fr24_url"]
+                logger.info(f"Tracking exact verified plane on FlightRadar24: {url}")
+            elif flight_data and flight_data.get("callsign"):
+                callsign = flight_data["callsign"]
+                url = f"https://www.flightradar24.com/flight/{callsign.lower()}"
+                logger.info(f"Tracking exact flight on FlightRadar24 via callsign: {url}")
+            elif flight_data and flight_data.get("icao24"):
+                icao24 = flight_data["icao24"]
+                url = f"https://www.flightradar24.com/data/aircraft/{icao24.lower()}"
+                logger.info(f"Tracking exact aircraft on FlightRadar24 via ICAO24 hex: {url}")
+            elif flight_data and flight_data.get("lat") and flight_data.get("lon"):
+                lat, lon = flight_data["lat"], flight_data["lon"]
+                url = f"https://www.flightradar24.com/{lat:.2f},{lon:.2f}/11"
+                logger.info(f"Opening FlightRadar24 map centered at tracked coordinates: {url}")
+            else:
+                url = "https://www.flightradar24.com"
+                logger.info(f"Opening main FlightRadar24 website: {url}")
+
+            open_or_refresh_flightradar_tab(url)
+        except Exception as e:
+            logger.error(f"Failed to open/refresh browser URL: {e}")
+
+    threading.Thread(target=launch_browser, daemon=True).start()
     threading.Thread(target=run_speech, daemon=True).start()
-
-    # Open browser to exact verified FlightRadar24 plane page
-    try:
-        if flight_data and flight_data.get("fr24_url"):
-            url = flight_data["fr24_url"]
-            logger.info(f"Tracking exact verified plane on FlightRadar24: {url}")
-        elif flight_data and flight_data.get("callsign"):
-            callsign = flight_data["callsign"]
-            url = f"https://www.flightradar24.com/flight/{callsign.lower()}"
-            logger.info(f"Tracking exact flight on FlightRadar24 via callsign: {url}")
-        elif flight_data and flight_data.get("icao24"):
-            icao24 = flight_data["icao24"]
-            url = f"https://www.flightradar24.com/data/aircraft/{icao24.lower()}"
-            logger.info(f"Tracking exact aircraft on FlightRadar24 via ICAO24 hex: {url}")
-        elif flight_data and flight_data.get("lat") and flight_data.get("lon"):
-            lat, lon = flight_data["lat"], flight_data["lon"]
-            url = f"https://www.flightradar24.com/{lat:.2f},{lon:.2f}/11"
-            logger.info(f"Opening FlightRadar24 map centered at tracked coordinates: {url}")
-        else:
-            url = "https://www.flightradar24.com"
-            logger.info(f"Opening main FlightRadar24 website: {url}")
-
-        webbrowser.open(url)
-    except Exception as e:
-        logger.error(f"Failed to open browser URL: {e}")
 
 
 def run_calibration(config):
@@ -663,9 +938,9 @@ def run_calibration(config):
         if peak > max_observed_peak:
             max_observed_peak = peak
 
-        threshold_peak = float(config.get("threshold_peak", 0.15))
+        threshold_peak = float(config.get("threshold_peak", 0.16))
         threshold_snap_peak = float(config.get("threshold_snap_peak", 0.05))
-        min_crest_factor = float(config.get("min_crest_factor", 3.0))
+        min_crest_factor = float(config.get("min_crest_factor", 2.8))
 
         is_clap = peak >= threshold_peak and rms >= float(config.get("threshold_rms", 0.003))
         is_snap = peak >= threshold_snap_peak and crest_factor >= min_crest_factor
@@ -704,7 +979,9 @@ class ClapDaemon:
         self.clap_timestamps = []
         self.cooldown_until = 0.0
         self.last_clap_time = 0.0
-        self.min_inter_clap_gap = 0.08
+        self.min_inter_clap_gap = 0.15
+        self.is_speaking = False
+        self.lock = threading.Lock()
         
         # Audio speech buffer for "Jarvis" wake word speech recognition
         self.speech_chunks = []
@@ -714,6 +991,15 @@ class ClapDaemon:
         # Full-cycle shuffle deck to guarantee every phrase is spoken at least once before repeating
         self.phrase_deck = []
         self.last_spoken = None
+
+    def on_speech_complete(self):
+        """Callback invoked when JARVIS TTS audio playback finishes."""
+        cooldown = float(self.config.get("cooldown_seconds", 3.0))
+        self.cooldown_until = time.time() + cooldown
+        self.is_speaking = False
+        self.clap_timestamps.clear()
+        self.speech_chunks.clear()
+        logger.info(f"Speech complete. Buffer cooldown active for {cooldown}s.")
 
     def check_speech_for_jarvis(self, audio_bytes):
         """Worker thread executing speech recognition for the wake word 'Jarvis'."""
@@ -726,10 +1012,8 @@ class ClapDaemon:
             
             if "jarvis" in text:
                 now = time.time()
-                if now >= self.cooldown_until:
+                if not self.is_speaking and now >= self.cooldown_until:
                     logger.info(">>> TRIGGER DETECTED: Spoken wake word 'Jarvis'! <<<")
-                    cooldown_seconds = float(self.config.get("cooldown_seconds", 5.0))
-                    self.cooldown_until = now + cooldown_seconds
                     threading.Thread(target=self.handle_trigger, daemon=True).start()
         except sr.UnknownValueError:
             pass  # Speech not clear or background noise
@@ -746,8 +1030,9 @@ class ClapDaemon:
 
             now = time.time()
 
-            # Ignore audio while in cooldown (prevents TTS voice from self-triggering)
-            if now < self.cooldown_until:
+            # Ignore all audio while speaking or during cooldown (prevents overlapping speech and TTS self-triggering)
+            if self.is_speaking or now < self.cooldown_until:
+                self.clap_timestamps.clear()
                 self.speech_chunks.clear()
                 return
 
@@ -755,10 +1040,10 @@ class ClapDaemon:
             rms = float(np.sqrt(np.mean(indata ** 2)))
             crest_factor = peak / (rms + 1e-6)
 
-            threshold_peak = float(self.config.get("threshold_peak", 0.15))
+            threshold_peak = float(self.config.get("threshold_peak", 0.16))
             threshold_snap_peak = float(self.config.get("threshold_snap_peak", 0.05))
             threshold_rms = float(self.config.get("threshold_rms", 0.003))
-            min_crest_factor = float(self.config.get("min_crest_factor", 3.0))
+            min_crest_factor = float(self.config.get("min_crest_factor", 2.8))
 
             # 1. Check Hand Clap and Finger Snap transients
             is_clap = peak >= threshold_peak and rms >= threshold_rms
@@ -771,21 +1056,20 @@ class ClapDaemon:
                     event_type = "Hand Clap" if is_clap else "Finger Snap"
                     logger.info(f"{event_type} detected! Peak: {peak:.3f}, RMS: {rms:.3f}, Crest: {crest_factor:.1f}")
 
-                    window_seconds = float(self.config.get("window_seconds", 2.5))
-                    required_claps = int(self.config.get("required_claps", 3))
+                    window_seconds = float(self.config.get("window_seconds", 4.0))
+                    required_claps = int(self.config.get("required_claps", 2))
                     self.clap_timestamps = [t for t in self.clap_timestamps if now - t <= window_seconds]
 
                     if len(self.clap_timestamps) >= required_claps:
-                        logger.info(f">>> TRIGGER DETECTED: {required_claps} claps/snaps within window! <<<")
-                        cooldown_seconds = float(self.config.get("cooldown_seconds", 5.0))
-                        self.cooldown_until = now + cooldown_seconds
-                        self.clap_timestamps.clear()
-                        self.speech_chunks.clear()
-                        threading.Thread(target=self.handle_trigger, daemon=True).start()
-                        return
+                        if not self.is_speaking:
+                            logger.info(f">>> TRIGGER DETECTED: {required_claps} claps/snaps within window! <<<")
+                            self.clap_timestamps.clear()
+                            self.speech_chunks.clear()
+                            threading.Thread(target=self.handle_trigger, daemon=True).start()
+                            return
 
             # 2. Accumulate continuous speech audio for "Jarvis" wake word recognition
-            if self.config.get("enable_jarvis_wake_word", True):
+            if self.config.get("enable_jarvis_wake_word", False):
                 if rms > 0.008:
                     int16_chunk = (indata * 32767).astype(np.int16).tobytes()
                     self.speech_chunks.append(int16_chunk)
@@ -803,11 +1087,7 @@ class ClapDaemon:
             logger.error(f"Error inside audio callback: {e}", exc_info=True)
 
     def get_random_phrase(self):
-        """
-        Selects a phrase using a full-cycle shuffle deck algorithm.
-        Guarantees that EVERY phrase in phrases.json is spoken exactly once in random order
-        before any phrase repeats.
-        """
+        """Selects a phrase via full-cycle shuffle deck so every phrase is spoken exactly once before any repeats."""
         phrases = load_phrases()
         if not phrases:
             return "At your service, sir."
@@ -832,10 +1112,27 @@ class ClapDaemon:
 
     def handle_trigger(self):
         """Handles response logic upon trigger (double clap, double snap, or spoken 'Jarvis')."""
+        with self.lock:
+            if self.is_speaking:
+                logger.info("Trigger ignored: JARVIS is already actively speaking.")
+                return
+            self.is_speaking = True
+
+        self.config = load_config()
+
+        # Step 1: Intelligent Audio Playback & Meeting Activity Guard
+        # Ensures no triggers occur during active audio playback or meetings, but permitted when media is paused.
+        is_permitted, suppression_reason = check_trigger_permitted(self.config)
+        if not is_permitted:
+            logger.info(f"🚫 [TRIGGER SUPPRESSED] {suppression_reason}")
+            self.is_speaking = False
+            self.cooldown_until = time.time() + 2.0
+            return
+
+        logger.info("⚡ [TRIGGER ALLOWED] System clear (no audio playing, no meeting active). Executing JARVIS response...")
+
         flight_info = None
         spoken_line = None
-        
-        self.config = load_config()
 
         # 1. Flight Overhead Check if enabled
         if self.config.get("enable_flight_check", True):
@@ -848,7 +1145,7 @@ class ClapDaemon:
             spoken_line = self.get_random_phrase()
 
         voice = self.config.get("voice", "en-GB-RyanNeural")
-        speak_and_launch(spoken_line, voice, flight_data=flight_info)
+        speak_and_launch(spoken_line, voice, flight_data=flight_info, on_done=self.on_speech_complete)
 
     def run(self):
         """Starts main loop listening continuously with auto-reconnect on sleep/wake."""
@@ -876,11 +1173,25 @@ class ClapDaemon:
 def main():
     parser = argparse.ArgumentParser(description="clap-jarvis double clap, finger snap, or 'Jarvis' wake-word daemon")
     parser.add_argument("--calibrate", action="store_true", help="Run 30-second live sensitivity calibration")
+    parser.add_argument("--status", action="store_true", help="Check live audio playback and meeting activity status")
     args = parser.parse_args()
 
     config = load_config()
 
-    if args.calibrate:
+    if args.status:
+        print("=" * 65)
+        print("  CLAP-JARVIS ACTIVITY & AUDIO STATUS CHECK")
+        print("=" * 65)
+        permitted, reason = check_trigger_permitted(config)
+        audio_playing, audio_desc = is_audio_playing(config)
+        in_meeting, meeting_desc = is_in_meeting(config)
+        print(f"Audio Playing:     {audio_playing} ({audio_desc or 'None'})")
+        print(f"In Meeting:        {in_meeting} ({meeting_desc or 'None'})")
+        print(f"Trigger Permitted: {permitted}")
+        if not permitted:
+            print(f"Block Reason:      {reason}")
+        print("=" * 65)
+    elif args.calibrate:
         run_calibration(config)
     else:
         daemon = ClapDaemon()
