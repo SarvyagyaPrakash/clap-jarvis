@@ -16,13 +16,14 @@ notify() {
     local subtitle="$2"
     local state="$3"
 
-    # 1. Native Floating Screen HUD (Always visible regardless of DND/Focus/Permissions)
+    afplay /System/Library/Sounds/Glass.aiff 2>/dev/null &
+
+    # 1. Native Floating Screen HUD (or fallback to Notification Center banner if HUD binary unavailable)
     if [ -f "${HUD_BIN}" ]; then
         "${HUD_BIN}" "${title}" "${subtitle}" "${state}" &
+    else
+        osascript -e "display notification \"${subtitle}\" with title \"${title}\"" 2>/dev/null || true
     fi
-
-    # 2. macOS Notification Center Banner with Sound
-    osascript -e "display notification \"${subtitle}\" with title \"${title}\" sound name \"Glass\"" 2>/dev/null || true
 }
 
 if launchctl list | grep -q "com.user.clapjarvis"; then

@@ -1,206 +1,260 @@
-# 👏 clap-jarvis
+# 👏 clap-jarvis — Your Mac, but it answers claps
 
 [![macOS](https://img.shields.io/badge/Platform-macOS-black?logo=apple&logoColor=white)](https://apple.com)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python&logoColor=white)](https://python.org)
-[![Neural TTS](https://img.shields.io/badge/TTS-Edge--Neural--TTS-orange)](https://github.com/rany2/edge-tts)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**clap-jarvis** is your personal macOS background assistant inspired by Iron Man's JARVIS. It runs silently in the background 24/7 as a native LaunchAgent daemon.
+Snap your fingers twice. Or clap twice. And your Mac talks back to you — in a smooth British accent, Iron Man style. It even tells you if there's a plane flying over your head right now.
 
-Snap your fingers or clap twice, and JARVIS responds in an ultra-realistic British neural voice, provides dynamic contextual greetings, and tracks real-time aircraft flying overhead via FlightRadar24.
+No apps to open. No buttons to press. JARVIS just lives quietly in the background and wakes up when *you* snap.
+
+> 🤌🤌 *(two snaps)*
+>
+> **JARVIS:** *"Good to see you again, sir."*
+
+Sounds fun? It takes about **5 minutes** to set up. Let's go. 🚀
 
 ---
 
-## ✨ Features
+## 🧰 Before we start — what you'll need
 
-- 🤌 **Dual Clap & Finger-Snap Detection**: High-precision transient analysis engineered specifically for percussive claps and finger snaps with minimal ambient false-positives.
-- 🎙️ **Ultra-Realistic Neural Voice**: Powered by Microsoft Edge Neural TTS (`en-GB-RyanNeural`) for a cinematic British butler experience, with offline macOS `say` fallback.
-- ✈️ **Overhead Flight Tracking**: Queries real-time airspace data to detect planes within your configured radius (e.g. 150 km), calculates ETA/altitude/speed, announces origin & destination in natural language, and opens FlightRadar24 focused on the aircraft.
-- 🔇 **Smart Media & Meeting Suppression**:
-  - Automatically suppresses triggers when music or video is playing (Spotify, Apple Music, YouTube in Chromium/Safari browsers, VLC, QuickTime).
-  - Configurable meeting detection (Zoom, Google Meet, Teams, FaceTime, Webex, Slack Huddle).
-- 🖥️ **Native macOS HUD Notification**: A sleek, floating glassmorphism HUD indicator (`hud_notifier`) built in Swift that displays status overlays atop all windows and Spaces when toggled.
-- ⚡ **Instant Control & Hot Reloading**: Toggle anytime with `jarvis`, a Desktop shortcut, or shell scripts. Updates to greetings in `phrases.json` take effect instantly without restarting.
+- ✅ A Mac (macOS 12 Monterey or newer)
+- ✅ A working microphone (built-in is fine)
+- ✅ Internet connection (JARVIS streams his voice + checks flights online)
+- ✅ About 5 minutes
+
+That's it. No coding knowledge needed.
 
 ---
 
-## 🎯 How to Use It Day-to-Day
+## 🚀 Installation (follow along step by step)
 
-### 1. Triggering JARVIS
-Perform **2 snaps** or **2 claps** in quick succession near your Mac microphone:
-- 🤌 **2 Finger Snaps** *(even light or quiet snaps)*
-- 👏 **2 Hand Claps**
+### Step 1 — Open the Terminal
 
-### 2. What JARVIS Does
-1. **Speaks a dynamic greeting** loaded from `phrases.json`.
-2. **Scans the local airspace**: If an aircraft is within your radius, JARVIS speaks the flight info and automatically opens/focuses the FlightRadar24 tracking page in your browser.
+Press `⌘ + Space`, type **Terminal**, hit Enter.
 
-> 🤌🤌 *(2 snaps)*
->
-> **JARVIS:** *"Hello sir, welcome back. Preferred choice of vibe today: Tame Impala or AC/DC?"*
->
-> **JARVIS:** *"Sir, Flight AIC101 from Delhi to New York JFK is currently overhead at an altitude of 35,000 feet and a speed of approximately 900 kilometers per hour."*
->
-> 🌐 *FlightRadar24 opens in your browser focused on the aircraft.*
+A window with white (or black) text appears. This is where you talk to your Mac directly. Don't worry — I'll tell you exactly what to type.
 
----
+### Step 2 — Install Apple's build tools (one-time thing)
 
-## 🚀 Installation & Setup
+JARVIS needs a small Apple toolkit to build his on-screen display. Paste this and hit Enter:
 
-### Prerequisites
-- macOS 12 Monterey or later
-- Python 3.9+
-- Xcode Command Line Tools (`xcode-select --install`) for compiling the native Swift helpers
+```bash
+xcode-select --install
+```
 
-### Quick Install
-Clone the repository and run the install script:
+A popup will appear → click **Install** → wait for it to finish (a few minutes).
+
+> 💡 **If you see** *"command line tools are already installed"* — great, you're ahead of schedule. Move on!
+
+### Step 3 — Download JARVIS
+
+Paste these two lines (one at a time):
 
 ```bash
 git clone https://github.com/SarvyagyaPrakash/clap-jarvis.git
 cd clap-jarvis
+```
+
+✅ **Checkpoint:** You're now inside the JARVIS folder. You can't see it, but trust the process.
+
+> 😱 **"Command not found: git"?** Your Mac wants to install developer tools first — just run Step 2's command again, or paste this instead:
+> ```bash
+> git --version
+> ```
+> A popup appears → click **Install** → then retry Step 3.
+
+### Step 4 — Run the magic installer
+
+```bash
 chmod +x *.sh
 ./install.sh
 ```
 
-The installer will:
-1. Create a Python virtual environment in `./venv`.
-2. Install dependencies (`edge-tts`, `sounddevice`, `numpy`, `requests`, `SpeechRecognition`).
-3. Compile native Swift helpers (`hud_notifier` & `media_detector`).
-4. Register and start the background LaunchAgent daemon (`com.user.clapjarvis.plist`).
+This single command does everything: sets up Python, installs what's needed, builds JARVIS's helpers, and starts him running in the background.
+
+✅ **Checkpoint:** Wait until you see:
+
+```
+===============================================
+          INSTALLATION COMPLETE! 🎉
+===============================================
+```
+
+If you see that — you're 90% done. One last permission to grant.
 
 ---
 
-## 🎙️ Granting Microphone Permission (Crucial)
+## 🎙️ Step 5 — Let JARVIS hear you (important!)
 
-macOS requires explicit Microphone authorization for background audio capture:
+macOS is protective of your microphone, so we need to explicitly allow it:
 
-1. Open **System Settings** → **Privacy & Security** → **Microphone**.
-2. Ensure **Terminal** (or your terminal emulator such as **iTerm2**) is enabled.
-3. If permissions were newly granted, restart the service:
-   ```bash
-   ./install.sh
-   ```
+1. Click the  in your menu bar → **System Settings**
+2. Go to **Privacy & Security** → **Microphone**
+3. Find **Terminal** (or iTerm2, whichever you use) and switch it **ON**
+
+> 💡 Don't see Terminal in the list? That's fine — it usually appears after the first run. Just continue to Step 6; macOS will pop up asking for permission, click **OK**, then come back here and re-run:
+> ```bash
+> ./install.sh
+> ```
+
+---
+
+## 🧪 Is it working? Let's find out!
+
+Time for the fun part. Make sure you're somewhere not too noisy, then:
+
+### Test 1: The Clap Test 👏👏
+
+Simply **clap twice** (or snap twice), sharply, near your Mac.
+
+🎉 **Did JARVIS speak?** Congratulations — you now have your own JARVIS.
+
+🤔 **Nothing happened?** Try this quick check — paste in Terminal:
+
+```bash
+tail -f ~/Library/Logs/clap-jarvis.log
+```
+
+Now clap again while watching the screen:
+
+| What you see | What it means |
+| :--- | :--- |
+| Lines appear mentioning a trigger / phrase | He heard you! If he's silent, check your volume 🔊 |
+| Nothing appears at all | He can't hear you → mic permission issue, redo Step 5 |
+| An error mentioning microphone/audio | Same fix — Step 5, then re-run `./install.sh` |
+
+*(Press `Ctrl + C` to stop watching the log when you're done.)*
+
+### Test 2: The Hearing Test 🎚️
+
+Want to see how loudly JARVIS perceives your snaps in real time? Run his calibration mode:
+
+```bash
+./venv/bin/python clap_jarvis.py --calibrate
+```
+
+Snap/clap a few times — you should see meters jump on each clap. If they barely move, get closer to the mic or lower the thresholds in `config.json`. *(Press `Ctrl + C` to exit.)*
+
+### Test 3: Confirm he's always on duty 🫡
+
+```bash
+launchctl list | grep clapjarvis
+```
+
+If you see a line containing `com.user.clapjarvis` with a number next to it — JARVIS is officially running in the background, even after restarts.
 
 ---
 
 ## 🎛️ Turning JARVIS ON & OFF
 
-You can pause or resume JARVIS at any time using any of these methods:
+Need quiet time? Pause him any of these ways:
 
-### Method A: Terminal Shortcut (Fastest)
-Add an alias to your `~/.zshrc` or `~/.bashrc`:
-```bash
-alias jarvis="/path/to/clap-jarvis/toggle.sh"
-```
-Then simply type:
-```bash
-jarvis
-```
-A floating HUD banner (`🟢 Microphone listener ON` / `🛑 Microphone listener OFF`) will appear in the top-right corner of your screen.
+**Option A — The one-word command (fastest)**
 
-### Method B: Double-Click Desktop Shortcut
-Double-click `Toggle JARVIS.command` in Finder or place a shortcut on your Desktop.
-
-### Method C: Helper Scripts
 ```bash
-./toggle.sh   # Toggle ON / OFF with HUD indicator
-./start.sh    # Turn ON / Resume daemon
-./stop.sh     # Turn OFF / Pause daemon
+./toggle.sh
 ```
+
+A banner appears on screen: `🟢 Microphone listener ON` or `🛑 Microphone listener OFF`.
+
+<details>
+<summary><b>Option B — Double-click from Finder (no Terminal at all)</b></summary>
+
+Open the `clap-jarvis` folder in Finder and double-click **`Toggle JARVIS.command`**.
+*(First time only: right-click → Open → Open, because Macs are suspicious of new files.)*
+
+</details>
+
+**Option C — Power-user shortcut**
+
+Add this once to make a personal command called `jarvis`:
+
+```bash
+echo 'alias jarvis="/path/to/clap-jarvis/toggle.sh"' >> ~/.zshrc && source ~/.zshrc
+```
+
+*(Replace `/path/to/clap-jarvis` with wherever you put the folder — drag the folder into Terminal to get its path automatically.)*
+
+From then on, just typing `jarvis` toggles him forever.
 
 ---
 
-## ⚙️ Configuration (`config.json`)
+## ✨ Make JARVIS yours
 
-Customize detection sensitivity, coordinates, voice, and suppression behavior in `config.json`:
+All settings live in two simple files inside the folder. Open them with TextEdit and edit away.
 
-```json
-{
-  "threshold_peak": 0.18,
-  "threshold_snap_peak": 0.12,
-  "min_crest_factor": 4.5,
-  "threshold_rms": 0.004,
-  "required_claps": 2,
-  "window_seconds": 2.5,
-  "cooldown_seconds": 4.0,
-  "voice": "en-GB-RyanNeural",
-  "enable_flight_check": true,
-  "enable_jarvis_wake_word": false,
-  "suppress_during_audio": true,
-  "suppress_during_meetings": false,
-  "latitude": 23.23352,
-  "longitude": 77.43257,
-  "radius_km": 150.0
-}
-```
+### 🗣️ Change what he says (`phrases.json`)
 
-### Parameter Reference
-
-| Setting | Type | Description |
-| :--- | :--- | :--- |
-| `required_claps` | `int` | Number of snaps/claps required to trigger (default: `2`). |
-| `window_seconds` | `float` | Maximum time window to complete the required snaps/claps (default: `2.5s`). |
-| `cooldown_seconds` | `float` | Silence cooldown after activation to prevent self-triggering (default: `4.0s`). |
-| `voice` | `string` | Neural voice identifier (e.g., `en-GB-RyanNeural`, `en-GB-SoniaNeural`, `en-US-GuyNeural`). |
-| `enable_flight_check` | `bool` | Whether to scan and announce overhead aircraft via FlightRadar24. |
-| `latitude` / `longitude` | `float` | Your coordinates for airspace calculations. |
-| `radius_km` | `float` | Airspace search radius in kilometers (default: `150.0`). |
-| `suppress_during_audio` | `bool` | Prevent triggering while audio/video is actively playing in media apps or browser tabs. |
-| `suppress_during_meetings` | `bool` | Prevent triggering while in video calls (Zoom, Meet, Teams, etc.). |
-| `threshold_snap_peak` | `float` | Peak threshold for snap transients (default: `0.12`). |
-| `threshold_peak` | `float` | Peak threshold for hand claps (default: `0.18`). |
-| `min_crest_factor` | `float` | Minimum crest factor (peak-to-RMS ratio) to distinguish sharp snaps from voice. |
-
----
-
-## 💬 Customizing Phrases (`phrases.json`)
-
-Add or edit lines in `phrases.json`:
+Edit the list, save — changes apply **instantly**, no restart needed:
 
 ```json
 [
-  "Hello sir, welcome back. Prefered choice of vibe today: Tame Impala or ACDC?",
-  "Terrific timing, sir. Your suit is 80% charged. Coffee is on the table.",
-  "Good to see you again, sir. Your Porsche will reach by tonight.",
-  "Welcome back, sir. Your Pizza is on the way. Do you want me to turn on the X-box?",
-  "Welcome back sir, your meeting with Elon Musk is clashing with your dinner with your girlfriend. Do you want me to inform Elon to reschedule?"
+  "Welcome back, sir. Your coffee machine missed you.",
+  "Good evening, sir. Shall I dim the lights?",
+  "Hello sir. The internet says you've been scrolling for 3 hours."
 ]
 ```
 
-> 💡 **Hot Reload**: Changes to `phrases.json` are applied instantly upon the next trigger without restarting the daemon.
+### ⚙️ Change how he behaves (`config.json`)
+
+The settings people actually change:
+
+| I want to... | Change this |
+| :--- | :--- |
+| Use a female British voice | `"voice": "en-GB-SoniaNeural"` |
+| Use an American voice | `"voice": "en-US-GuyNeural"` |
+| Stop flight announcements | `"enable_flight_check": false` |
+| Update my location for flight tracking | Set `latitude` / `longitude` ([find yours here](https://latlong.info)) |
+| Make him less jumpy (fewer false triggers) | Raise `"threshold_peak"` to `0.22` and `"threshold_snap_peak"` to `0.16` |
+| Make him more sensitive | Lower those same numbers slightly |
+
+> 🤫 **Nice touch:** JARVIS automatically stays silent while you're listening to music or watching videos — so no random interruptions mid-song.
 
 ---
 
-## 🔍 Calibration & Diagnostics
+## 🆘 Something's wrong? (Plain-English fixes)
 
-### 1. Live Sensitivity Calibration
-Run calibration mode in Terminal to view real-time percussive meters and test your snap/clap detection:
-```bash
-./venv/bin/python clap_jarvis.py --calibrate
-```
+| Problem | Fix |
+| :--- | :--- |
+| **Installed fine, but ignores my claps** | 99% of the time it's mic permission → redo Step 5, then `./install.sh`. Also try louder/sharper claps closer to the mic. |
+| **Speaks, but too quietly** | Turn up system volume — his voice plays through your speakers. |
+| **Triggers randomly during videos/music** | That shouldn't happen — he suppresses himself during media playback. Check `"suppress_during_audio": true` in `config.json`. |
+| **Flight announcements are about the wrong city** | Update `latitude` / `longitude` in `config.json` to your location. |
+| **`swiftc: command not found` during install** | Run `xcode-select --install` (Step 2) and retry. |
+| **Everything broke / want a fresh start** | `./uninstall.sh` → then `./install.sh` again. Clean slate. |
 
-### 2. Live Logs
-Monitor real-time daemon events and trigger logs:
-```bash
-tail -f ~/Library/Logs/clap-jarvis.log
-```
+Still stuck? Watch his live thoughts while reproducing the problem:
 
-Error log:
 ```bash
-tail -f ~/Library/Logs/clap-jarvis.err.log
+tail -f ~/Library/Logs/clap-jarvis.log        # what he's doing
+tail -f ~/Library/Logs/clap-jarvis.err.log    # what went wrong
 ```
 
 ---
 
-## 🗑️ Uninstallation
+## 🗑️ Breaking up with JARVIS
 
-To completely stop and remove the background LaunchAgent:
+We'll miss you. To remove him completely:
+
 ```bash
 ./uninstall.sh
 ```
+
+Then just delete the `clap-jarvis` folder. No traces left behind.
+
+---
+
+## 🤓 Under the hood (for the curious)
+
+- Listens via `sounddevice` and uses crest-factor analysis to distinguish sharp snaps/claps from speech or ambient noise
+- Voice: Microsoft Edge Neural TTS (`en-GB-RyanNeural`), falls back offline to macOS `say`
+- Flights: real-time airspace data within your radius, announced with altitude/speed/route, opens FlightRadar24 focused on the aircraft
+- Runs as a native macOS **LaunchAgent** — survives reboots, zero windows, zero dock icons
+- Native Swift HUD overlay for status banners, plus smart suppression during media/meetings
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+MIT — free to use, modify, and show off to friends.
