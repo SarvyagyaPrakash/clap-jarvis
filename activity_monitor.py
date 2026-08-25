@@ -177,7 +177,7 @@ def check_browser_media(running_procs: Set[str]) -> Tuple[bool, Optional[str]]:
                     repeat with t in tabs of w
                         try
                             tell t
-                                set jsResult to (execute javascript "(() => {{ const media = Array.from(document.querySelectorAll(\x27video, audio\x27)); return media.some(m => !m.paused && !m.ended && m.currentTime > 0); }})()")
+                                set jsResult to (execute javascript "(() => {{ const url = window.location.href; const meetingHosts = [\x27meet.google.com\x27, \x27teams.microsoft.com\x27, \x27teams.live.com\x27, \x27zoom.us\x27, \x27webex.com\x27, \x27discord.com\x27, \x27app.slack.com\x27, \x27whereby.com\x27, \x27gather.town\x27, \x27around.co\x27, \x27chime.aws\x27]; if (meetingHosts.some(h => url.includes(h))) return false; const media = Array.from(document.querySelectorAll(\x27video, audio\x27)); return media.some(m => !m.paused && !m.ended && m.currentTime > 0); }})()")
                             end tell
                             if jsResult is true or jsResult is "true" then
                                 set isPlaying to true
@@ -340,9 +340,6 @@ def check_video_conferencing_apps(running_procs: Set[str]) -> Tuple[bool, Option
 
 def is_in_meeting(config: Optional[dict] = None) -> Tuple[bool, Optional[str]]:
     """Returns (True, reason) if the user is in an active video conference (Zoom, Meet, Teams, etc.), else (False, None)."""
-    if config and not config.get("suppress_during_meetings", True):
-        return False, None
-
     running_procs = get_running_process_basenames()
     return check_video_conferencing_apps(running_procs)
 
@@ -354,10 +351,12 @@ def check_trigger_permitted(config: Optional[dict] = None) -> Tuple[bool, Option
     if audio_playing:
         return False, f"Audio currently playing ({audio_reason})"
 
-    # 2. Meeting Check
-    in_meeting, meeting_reason = is_in_meeting(config)
-    if in_meeting:
-        return False, f"User in meeting ({meeting_reason})"
+    # 2. Meeting Check (only suppress if explicitly configured to True)
+    suppress_meetings = bool(config.get("suppress_during_meetings", False)) if config else False
+    if suppress_meetings:
+        in_meeting, meeting_reason = is_in_meeting(config)
+        if in_meeting:
+            return False, f"User in meeting ({meeting_reason})"
 
     return True, None
 

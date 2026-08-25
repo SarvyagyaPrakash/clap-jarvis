@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
     "voice": "en-GB-RyanNeural",    # Ultra-realistic British Male Neural Voice (JARVIS)
     "enable_flight_check": True,
     "suppress_during_audio": True,   # Block trigger when audio is playing from any browser/player
-    "suppress_during_meetings": True, # Block trigger when user is in a meeting (Zoom, Meet, Teams, FaceTime)
+    "suppress_during_meetings": False, # Block trigger when user is in a meeting (Zoom, Meet, Teams, FaceTime) - disabled so JARVIS works in meetings
     "latitude": 23.23352,            # MP Nagar, Bhopal coordinates
     "longitude": 77.43257,
     "radius_km": 150.0,

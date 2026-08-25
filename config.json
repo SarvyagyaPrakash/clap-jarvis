@@ -10,7 +10,7 @@
   "enable_flight_check": true,
   "enable_jarvis_wake_word": false,
   "suppress_during_audio": true,
-  "suppress_during_meetings": true,
+  "suppress_during_meetings": false,
   "latitude": 23.23352,
   "longitude": 77.43257,
   "radius_km": 150.0

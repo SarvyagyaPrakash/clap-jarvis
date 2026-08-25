@@ -29,6 +29,14 @@ echo "[2/4] Installing Python dependencies from requirements.txt..."
 "${VENV_PYTHON}" -m pip install --upgrade pip
 "${VENV_PYTHON}" -m pip install -r "${SCRIPT_DIR}/requirements.txt"
 
+# Compile native Swift helpers (HUD overlay & MediaRemote detector)
+if [ -f "${SCRIPT_DIR}/hud_notifier.swift" ]; then
+    swiftc -O "${SCRIPT_DIR}/hud_notifier.swift" -o "${SCRIPT_DIR}/hud_notifier" 2>/dev/null || true
+fi
+if [ -f "${SCRIPT_DIR}/media_detector.swift" ]; then
+    swiftc -O "${SCRIPT_DIR}/media_detector.swift" -o "${SCRIPT_DIR}/media_detector" 2>/dev/null || true
+fi
+
 # 3. Generate LaunchAgent plist file with absolute paths
 echo "[3/4] Generating LaunchAgent plist definition..."
 mkdir -p "${DEST_PLIST_DIR}"
