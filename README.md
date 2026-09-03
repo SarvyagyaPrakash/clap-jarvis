@@ -1,12 +1,12 @@
-# 👏 clap-jarvis — Your Mac, but it answers claps
+# 🤌 snap-jarvis — Your Mac, but it answers finger snaps
 
 [![macOS](https://img.shields.io/badge/Platform-macOS-black?logo=apple&logoColor=white)](https://apple.com)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Snap your fingers twice. Or clap twice. And your Mac talks back to you — in a smooth British accent, Iron Man style. It even tells you if there's a plane flying over your head right now.
+Snap your fingers twice. And your Mac talks back to you in a smooth British neural voice (`en-GB-RyanNeural`), Iron Man style. It even tells you if there's a plane flying over your head right now.
 
-No apps to open. No buttons to press. JARVIS just lives quietly in the background and wakes up when *you* snap.
+No apps to open. No buttons to press. JARVIS lives quietly in the background and wakes up strictly when *you* snap.
 
 > 🤌🤌 *(two snaps)*
 >
@@ -89,7 +89,7 @@ If you see that — you're 90% done. One last permission to grant.
 
 macOS is protective of your microphone, so we need to explicitly allow it:
 
-1. Click the  in your menu bar → **System Settings**
+1. Click the  in your menu bar → **System Settings**
 2. Go to **Privacy & Security** → **Microphone**
 3. Find **Terminal** (or iTerm2, whichever you use) and switch it **ON**
 
@@ -104,9 +104,9 @@ macOS is protective of your microphone, so we need to explicitly allow it:
 
 Time for the fun part. Make sure you're somewhere not too noisy, then:
 
-### Test 1: The Clap Test 👏👏
+### Test 1: The Snap Test 🤌🤌
 
-Simply **clap twice** (or snap twice), sharply, near your Mac.
+Simply **snap your fingers twice**, sharply, near your Mac.
 
 🎉 **Did JARVIS speak?** Congratulations — you now have your own JARVIS.
 
@@ -116,11 +116,11 @@ Simply **clap twice** (or snap twice), sharply, near your Mac.
 tail -f ~/Library/Logs/clap-jarvis.log
 ```
 
-Now clap again while watching the screen:
+Now snap again while watching the screen:
 
 | What you see | What it means |
 | :--- | :--- |
-| Lines appear mentioning a trigger / phrase | He heard you! If he's silent, check your volume 🔊 |
+| Lines appear mentioning a trigger / phrase | He heard your snaps! If he's silent, check your volume 🔊 |
 | Nothing appears at all | He can't hear you → mic permission issue, redo Step 5 |
 | An error mentioning microphone/audio | Same fix — Step 5, then re-run `./install.sh` |
 
@@ -134,7 +134,7 @@ Want to see how loudly JARVIS perceives your snaps in real time? Run his calibra
 ./venv/bin/python clap_jarvis.py --calibrate
 ```
 
-Snap/clap a few times — you should see meters jump on each clap. If they barely move, get closer to the mic or lower the thresholds in `config.json`. *(Press `Ctrl + C` to exit.)*
+Snap a few times — you should see meters jump and display `🤌 [SNAP DETECTED!]`. If they barely move, get closer to the mic or adjust thresholds in `config.json`. *(Press `Ctrl + C` to exit.)*
 
 ### Test 3: Confirm he's always on duty 🫡
 
@@ -202,12 +202,11 @@ The settings people actually change:
 
 | I want to... | Change this |
 | :--- | :--- |
-| Use a female British voice | `"voice": "en-GB-SoniaNeural"` |
-| Use an American voice | `"voice": "en-US-GuyNeural"` |
+| Voice | Exclusively locked to British Neural Voice (`"voice": "en-GB-RyanNeural"`) |
 | Stop flight announcements | `"enable_flight_check": false` |
 | Update my location for flight tracking | Set `latitude` / `longitude` ([find yours here](https://latlong.info)) |
-| Make him less jumpy (fewer false triggers) | Raise `"threshold_peak"` to `0.22` and `"threshold_snap_peak"` to `0.16` |
-| Make him more sensitive | Lower those same numbers slightly |
+| Make him less sensitive to snaps | Raise `"threshold_snap_peak"` to `0.12` |
+| Make him more sensitive to snaps | Lower `"threshold_snap_peak"` to `0.06` |
 
 > 🤫 **Nice touch:** JARVIS automatically stays silent while you're listening to music or watching videos — so no random interruptions mid-song.
 
@@ -217,7 +216,7 @@ The settings people actually change:
 
 | Problem | Fix |
 | :--- | :--- |
-| **Installed fine, but ignores my claps** | 99% of the time it's mic permission → redo Step 5, then `./install.sh`. Also try louder/sharper claps closer to the mic. |
+| **Installed fine, but ignores my snaps** | 99% of the time it's mic permission → redo Step 5, then `./install.sh`. Also try sharper snaps closer to the mic. |
 | **Speaks, but too quietly** | Turn up system volume — his voice plays through your speakers. |
 | **Triggers randomly during videos/music** | That shouldn't happen — he suppresses himself during media playback. Check `"suppress_during_audio": true` in `config.json`. |
 | **Flight announcements are about the wrong city** | Update `latitude` / `longitude` in `config.json` to your location. |
@@ -241,14 +240,14 @@ We'll miss you. To remove him completely:
 ./uninstall.sh
 ```
 
-Then just delete the `clap-jarvis` folder. No traces left behind.
+Then just delete the folder. No traces left behind.
 
 ---
 
 ## 🤓 Under the hood (for the curious)
 
-- Listens via `sounddevice` and uses crest-factor analysis to distinguish sharp snaps/claps from speech or ambient noise
-- Voice: Microsoft Edge Neural TTS (`en-GB-RyanNeural`), falls back offline to macOS `say`
+- Listens via `sounddevice` and uses high-frequency FFT spectral analysis (2kHz - 8kHz) + Crest Factor analysis to specifically detect finger snaps and reject speech, claps, typing, or room noise
+- Voice: Exclusively Microsoft Edge British Neural TTS (`en-GB-RyanNeural`)
 - Flights: real-time airspace data within your radius, announced with altitude/speed/route, opens FlightRadar24 focused on the aircraft
 - Runs as a native macOS **LaunchAgent** — survives reboots, zero windows, zero dock icons
 - Native Swift HUD overlay for status banners, plus smart suppression during media/meetings

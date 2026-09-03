@@ -204,13 +204,8 @@ def speak_and_launch(phrase, voice, flight_data=None, on_done=None):
 
     def run_speech():
         played_successfully = False
-        target_voice = voice
-
-        # Resolve voice alias to high quality British neural voice
-        if target_voice in ["Daniel", "JARVIS", "Ryan", "default"]:
-            target_voice = "en-GB-RyanNeural"
-        elif target_voice in ["Thomas"]:
-            target_voice = "en-GB-ThomasNeural"
+        # Exclusively lock to en-GB-RyanNeural voice
+        target_voice = "en-GB-RyanNeural"
 
         try:
             # 1. Try Ultra-Realistic Neural TTS via edge-tts

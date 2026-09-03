@@ -6,15 +6,16 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 
-# Default Fallback Configurations (optimized for precise snap/clap detection and human-like neural voice)
+# Default Fallback Configurations (optimized for precise finger snap detection and human-like neural voice)
 DEFAULT_CONFIG = {
-    "threshold_peak": 0.18,         # Clap peak threshold
-    "threshold_snap_peak": 0.05,    # Snap peak threshold (responsive to all 3 deliberate finger snaps)
-    "min_crest_factor": 3.8,        # Sharp percussive transient crest factor (filters ambient noise & voice)
-    "threshold_rms": 0.002,         # RMS energy floor
-    "required_claps": 3,            # Requires 3 snaps or claps
-    "window_seconds": 3.0,          # Window for 3 snaps/claps
-    "cooldown_seconds": 4.0,        # Pause after trigger to prevent self-triggering from TTS
+    "threshold_snap_peak": 0.08,    # Snap peak threshold (responsive to deliberate finger snaps)
+    "min_crest_factor": 4.0,        # Sharp transient crest factor (filters continuous voice/noise)
+    "min_snap_ratio": 1.1,          # High-to-low frequency energy ratio (2-8kHz vs <1.5kHz)
+    "min_spectral_centroid": 2200,  # Spectral centroid minimum Hz (distinguishes snaps from claps/speech)
+    "max_snap_rms": 0.08,           # Maximum RMS energy (rejects sustained loud speech or claps)
+    "required_snaps": 2,            # Requires 2 crisp finger snaps
+    "window_seconds": 2.5,          # Window for snaps
+    "cooldown_seconds": 3.5,        # Pause after trigger to prevent self-triggering from TTS
     "voice": "en-GB-RyanNeural",    # Ultra-realistic British Male Neural Voice (JARVIS)
     "enable_flight_check": True,
     "suppress_during_audio": True,   # Block trigger when audio is playing from any browser/player
@@ -23,8 +24,7 @@ DEFAULT_CONFIG = {
     "longitude": 77.43257,
     "radius_km": 150.0,
     "sample_rate": 44100,
-    "block_size": 1024,
-    "enable_jarvis_wake_word": False # Spoken "Jarvis" activation disabled
+    "block_size": 1024
 }
 
 DEFAULT_PHRASES = [
